@@ -1,4 +1,6 @@
-﻿//Technical task https://docs.google.com/spreadsheets/d/1YrJWy67tpgEo2GomPbx0Fp2gYMT7JLArQt8AY1bdfUs
+﻿//Main
+
+//Technical task https://docs.google.com/spreadsheets/d/1YrJWy67tpgEo2GomPbx0Fp2gYMT7JLArQt8AY1bdfUs
 // https://docs.google.com/spreadsheets/d/1HgKRU24pB7EbuVbUa-HqBhI7UMKXg3_u43hDlEzYXS8
 SET ThousandSep=' ';
 SET DecimalSep=',';
@@ -25,23 +27,25 @@ SET TRN_QVD_PATH = 'lib://OCDSKGData/02_QVD_DB/02_Transaction/';
 SET FILES_PATH = 'lib://OCDSKGData/01_DataFiles/';
 SET LOCAL_FILES_PATH = 'lib://OCDSKGData/03_LocalFiles/';
 
-//SET vBaseURL = 'http://***/api/releases'; // TEST 
-SET vBaseURL = 'http://***/api/releases'; // LIVE 
-Set vOffsetNo = '?offset=';
-Set vOffsetBase = 0;
-Set vPageNo = '&page=';
-Set vPageNoBase = 0;
+SET PLAN_TRN_QVD_PATH = 'lib://OCDSKGData/02_QVD_DB/02_Transaction_Plan/';
 
+SET vBaseURL = 'http://192.168.17.10:8112/api/tendering'; // LIVE 
+Set vOffsetNo = '?offset=0';
+
+Set vSince = '&since=';
+Set vSinceBase = '2020-01-01T00:00:00.000Z';
+
+SET vLoadSteps = 5;
 SET vPageSize = '&size=1000';
-// Step of changing packs (the larger the number, the less often QVD files are overwritten) vPageSize x vStep
-SET vStep = 5;
 
-// Currency Rates
-SET vCurrencyURL = 'http://***/api/catalogs/currency-rates';
-// Property Directory
-SET vLegalFormURL = 'http://***/api/catalogs/legal-forms';
 
-// To convert boolean values
+// Курсы валют
+SET vCurrencyURL = 'http://192.168.17.10:8112/api/catalogs/currency-rates';
+// Справочник форм собственности
+SET vLegalFormURL = 'http://192.168.17.10:8112/api/catalogs/legal-forms';
+
+//1. Procedures
+
 BoolMap:
 Mapping
 Load * Inline [
@@ -52,145 +56,103 @@ false,	   0
 
 SET vBoolConvert = "ApplyMap('BoolMap', Lower($1), $2)";
 
-// Date and time conversions
-SET vDateConvert = "ConvertToLocalTime($1)";
+
+SET vDateConvert = "TimeStamp(ConvertToLocalTime($1))";
 SET vFloorDateConvert = "Date(Floor(ConvertToLocalTime($1)))";
 
 SUB Parties(party_name)
 
-trace party name = $(party_name);
+  trace party name = $(party_name);
 
-[$(party_name)_tmp]:
-NoConcatenate
-Load IDParty as [ID$(party_name)Orig],
-	[parties_scheme] as [$(party_name)_scheme],
-	[parties_id] as [$(party_name)_id],
-	[parties_legalName] as [$(party_name)_legalName],
-	[parties_legalName_ru] as [$(party_name)_legalName_ru],
-	[parties_legalName_kg] as [$(party_name)_legalName_kg],
-	[parties_ateCode] as [$(party_name)_ateCode],
-	[parties_countryName] as [$(party_name)_countryName],
-	[parties_region] as [$(party_name)_region],
-	[parties_subregion] as [$(party_name)_subregion],
-	[parties_district] as [$(party_name)_district],
-	[parties_subdistrict] as [$(party_name)_subdistrict],
-	[parties_subsubdistrict] as [$(party_name)_subsubdistrict],
-	[parties_locality] as [$(party_name)_locality],
-	[parties_streetAddress] as [$(party_name)_streetAddress],
-//    parties_complexKeyForCP as [$(party_name)_complexKeyForCP],
-    parties_latestRelease_date as [$(party_name)_latestRelease_date]
-Resident parties
-where parties_role like '$(party_name)'
-;
+  [$(party_name)_tmp]:
+  NoConcatenate
+  Load IDParty as [ID$(party_name)Orig],
+      [parties_scheme] as [$(party_name)_scheme],
+      [parties_id] as [$(party_name)_id],
+      [parties_legalName] as [$(party_name)_legalName],
+  //	[parties_legalName_ru] as [$(party_name)_legalName_ru],
+      [parties_legalName_kg] as [$(party_name)_legalName_kg],
+      [parties_ateCode] as [$(party_name)_ateCode],
+      [parties_countryName] as [$(party_name)_countryName],
+      [parties_region] as [$(party_name)_region],
+      [parties_subregion] as [$(party_name)_subregion],
+      [parties_district] as [$(party_name)_district],
+      [parties_subdistrict] as [$(party_name)_subdistrict],
+      [parties_subsubdistrict] as [$(party_name)_subsubdistrict],
+      [parties_locality] as [$(party_name)_locality],
+      [parties_streetAddress] as [$(party_name)_streetAddress],
+  //    parties_complexKeyForCP as [$(party_name)_complexKeyForCP],
+      parties_latestRelease_date as [$(party_name)_latestRelease_date]
+  Resident parties
+  where parties_role like '$(party_name)'
+  ;
 
-if NOT Isnull( FileSize('$(DIC_QVD_PATH)$(party_name).qvd')) THEN
-Concatenate ($(party_name)_tmp)
-load [ID$(party_name)Orig],
-	[$(party_name)_scheme],
-	[$(party_name)_id],
-	[$(party_name)_legalName],
-	[$(party_name)_legalName_ru],
-	[$(party_name)_legalName_kg],
-	[$(party_name)_ateCode],
-	[$(party_name)_countryName],
-	[$(party_name)_region],
-	[$(party_name)_subregion],
-	[$(party_name)_district],
-	[$(party_name)_subdistrict],
-	[$(party_name)_subsubdistrict],
-	[$(party_name)_locality],
-	[$(party_name)_streetAddress],
-//    [$(party_name)_complexKeyForCP],
-    [$(party_name)_latestRelease_date]
-FROM [$(DIC_QVD_PATH)$(party_name).qvd] (qvd);
-ENDIF;
+  IF NOT Isnull( FileSize('$(DIC_QVD_PATH)$(party_name).qvd')) THEN
+    Concatenate ($(party_name)_tmp)
+    load [ID$(party_name)Orig],
+        [$(party_name)_scheme],
+        [$(party_name)_id],
+        [$(party_name)_legalName],
+    //	[$(party_name)_legalName_ru],
+        [$(party_name)_legalName_kg],
+        [$(party_name)_ateCode],
+        [$(party_name)_countryName],
+        [$(party_name)_region],
+        [$(party_name)_subregion],
+        [$(party_name)_district],
+        [$(party_name)_subdistrict],
+        [$(party_name)_subsubdistrict],
+        [$(party_name)_locality],
+        [$(party_name)_streetAddress],
+    //    [$(party_name)_complexKeyForCP],
+        [$(party_name)_latestRelease_date]
+    FROM [$(DIC_QVD_PATH)$(party_name).qvd] (qvd);
+  ENDIF
 
-[$(party_name)]:
-NoConcatenate
-LOAD LastValue([ID$(party_name)Orig]) AS [ID$(party_name)Orig],
-	LastValue([$(party_name)_scheme]) AS [$(party_name)_scheme],
-	LastValue([$(party_name)_id]) AS [$(party_name)_id],
-	LastValue([$(party_name)_legalName]) AS [$(party_name)_legalName],
-	LastValue([$(party_name)_legalName_ru]) AS [$(party_name)_legalName_ru],
-	LastValue([$(party_name)_legalName_kg]) AS [$(party_name)_legalName_kg],
-	LastValue([$(party_name)_ateCode]) AS [$(party_name)_ateCode],
-	LastValue([$(party_name)_countryName]) AS [$(party_name)_countryName],
-	LastValue([$(party_name)_region]) AS [$(party_name)_region],
-	LastValue([$(party_name)_subregion]) AS [$(party_name)_subregion],
-	LastValue([$(party_name)_district]) AS [$(party_name)_district],
-	LastValue([$(party_name)_subdistrict]) AS [$(party_name)_subdistrict],
-	LastValue([$(party_name)_subsubdistrict]) AS [$(party_name)_subsubdistrict],
-	LastValue([$(party_name)_locality]) AS [$(party_name)_locality],
-	LastValue([$(party_name)_streetAddress]) AS [$(party_name)_streetAddress],
-//    LastValue([$(party_name)_complexKeyForCP]) AS [$(party_name)_complexKeyForCP], //скорее всего не нужен - закоментить после теста
-    LastValue([$(party_name)_latestRelease_date]) AS [$(party_name)_latestRelease_date]
-    ,AutoNumber([ID$(party_name)Orig], 'ID$(party_name)') AS [ID$(party_name)]
-Resident [$(party_name)_tmp]
-Group by [ID$(party_name)Orig]
-Order by [$(party_name)_latestRelease_date] asc
-;
+  [$(party_name)]:
+  NoConcatenate
+  LOAD LastValue([ID$(party_name)Orig]) AS [ID$(party_name)Orig],
+      LastValue([$(party_name)_scheme]) AS [$(party_name)_scheme],
+      LastValue([$(party_name)_id]) AS [$(party_name)_id],
+      LastValue([$(party_name)_legalName]) AS [$(party_name)_legalName],
+  //	LastValue([$(party_name)_legalName_ru]) AS [$(party_name)_legalName_ru],
+      LastValue([$(party_name)_legalName_kg]) AS [$(party_name)_legalName_kg],
+      LastValue([$(party_name)_ateCode]) AS [$(party_name)_ateCode],
+      LastValue([$(party_name)_countryName]) AS [$(party_name)_countryName],
+      LastValue([$(party_name)_region]) AS [$(party_name)_region],
+      LastValue([$(party_name)_subregion]) AS [$(party_name)_subregion],
+      LastValue([$(party_name)_district]) AS [$(party_name)_district],
+      LastValue([$(party_name)_subdistrict]) AS [$(party_name)_subdistrict],
+      LastValue([$(party_name)_subsubdistrict]) AS [$(party_name)_subsubdistrict],
+      LastValue([$(party_name)_locality]) AS [$(party_name)_locality],
+      LastValue([$(party_name)_streetAddress]) AS [$(party_name)_streetAddress],
+  //    LastValue([$(party_name)_complexKeyForCP]) AS [$(party_name)_complexKeyForCP], //скорее всего не нужен - закоментить после теста
+      LastValue([$(party_name)_latestRelease_date]) AS [$(party_name)_latestRelease_date]
+      ,AutoNumber([ID$(party_name)Orig], 'ID$(party_name)') AS [ID$(party_name)]
+  Resident [$(party_name)_tmp]
+  Group by [ID$(party_name)Orig]
+  Order by [$(party_name)_latestRelease_date] asc
+  ;
 
-drop table [$(party_name)_tmp];
+  drop table [$(party_name)_tmp];
 
-Store [$(party_name)] into [$(DIC_QVD_PATH)$(party_name).qvd] (qvd);
-Drop table [$(party_name)]; 
+  Store [$(party_name)] into [$(DIC_QVD_PATH)$(party_name).qvd] (qvd);
+  Drop table [$(party_name)]; 
 
+ENDSUB
 
-[$(party_name)_contactPoints_tmp]:
-NoConcatenate
-Load IDParty as [ID$(party_name)Orig],
-	[parties_CP_name] AS [$(party_name)_contactPoint_name],
-	[parties_CP_email] AS [$(party_name)_contactPoint_email],
-	[parties_CP_telephone] AS [$(party_name)_contactPoint_telephone],
-	[parties_CP_role] AS [$(party_name)_contactPoint_role],
-//    parties_complexKeyForCP AS [$(party_name)_complexKeyForCP],
-    contactPoint_latestRelease_date as [$(party_name)_contactPoint_latestRelease_date]
-Resident contactPoints
-where parties_role like '$(party_name)'
-;
-
-if NOT Isnull( FileSize('$(DIC_QVD_PATH)$(party_name)_contanctPoint.qvd')) THEN
-Concatenate ($(party_name)_contactPoints_tmp)
-load [ID$(party_name)Orig],
-	[$(party_name)_contactPoint_name],
-	[$(party_name)_contactPoint_email],
-	[$(party_name)_contactPoint_telephone],
-	[$(party_name)_contactPoint_role],
-//    [$(party_name)_complexKeyForCP],
-    [$(party_name)_contactPoint_latestRelease_date]
-FROM [$(DIC_QVD_PATH)$(party_name)_contanctPoint.qvd] (qvd);
-ENDIF;
-
-[$(party_name)_contactPoints]:
-NoConcatenate
-Load  LastValue([ID$(party_name)Orig]) AS [ID$(party_name)Orig],
-	LastValue([$(party_name)_contactPoint_name]) AS [$(party_name)_contactPoint_name],
-	LastValue([$(party_name)_contactPoint_email]) AS [$(party_name)_contactPoint_email],
-	LastValue([$(party_name)_contactPoint_telephone]) AS [$(party_name)_contactPoint_telephone],
-	LastValue([$(party_name)_contactPoint_role]) AS [$(party_name)_contactPoint_role],
-//    LastValue([$(party_name)_complexKeyForCP]) AS [$(party_name)_complexKeyForCP],
-    LastValue([$(party_name)_contactPoint_latestRelease_date]) AS [$(party_name)_contactPoint_latestRelease_date]
-    ,AutoNumber([ID$(party_name)Orig], 'ID$(party_name)') AS [ID$(party_name)]
-Resident $(party_name)_contactPoints_tmp
-Group by [$(party_name)_contactPoint_name], [ID$(party_name)Orig]
-order by [$(party_name)_contactPoint_latestRelease_date] asc
-;
-
-drop table $(party_name)_contactPoints_tmp;
-
-Store [$(party_name)_contactPoints] into [$(DIC_QVD_PATH)$(party_name)_contactPoints.qvd] (qvd);
-Drop table [$(party_name)_contactPoints]; 
-
-End Sub;
-
-// The section can be moved to the end of the download queue without additional settings and changes!
+//2. Store dictionaries
 
 CPVClassification:
-LOAD
+LOAD Distinct
     F1 as IDClassCPVOrig,
-    F2 as CPVClassNameRu
+    F2 as CPVClassNameRu,
+    if(Len(F3)<3, F2, F3) as CPVClassNameEn,
+    if(Len(F4)<3, F2, F4) as CPVClassNameKg
 FROM [lib://OCDSKG_dictionaries]
-(html, utf8, embedded labels, table is @1);
+(html, utf8, embedded labels, table is @1, url is 'https://docs.google.com/spreadsheets/u/1/d/***')
+Where F1 Like '*-?' AND Len(F1)>3
+;
 
 Store CPVClassification into [$(DIC_QVD_PATH)CPVClassification.qvd] (qvd);
 Drop table CPVClassification; 
@@ -205,7 +167,7 @@ LOAD
     F5 as Kg,
     F6 as attributeOf
 FROM [lib://OCDSKG_dictionaries]
-(html, utf8, embedded labels, table is @1, url is 'https://***')
+(html, utf8, embedded labels, table is @1, url is 'https://docs.google.com/spreadsheets/u/1/d/***')
 where F1 <> 'Index' and len(F1)>0;
 
 store Multilang_Dictionaries into [$(DIC_QVD_PATH)/Multilang_Dictionaries.qvd] (qvd);
@@ -220,14 +182,26 @@ LOAD
     F4 as /*Lan2*/En,
     F5 as /*Lan3*/Kg
 FROM [lib://OCDSKG_dictionaries]
-(html, utf8, embedded labels, table is @1, url is 'https://***')
+(html, utf8, embedded labels, table is @1, url is 'https://docs.google.com/spreadsheets/u/1/d/***')
 where F1 <> 'Index' and len(F1)>0;
 
 store Multilang_FieldNames into [$(DIC_QVD_PATH)/Multilang_FieldNames.qvd] (qvd);
 Drop table Multilang_FieldNames;
 
+Region_Dictionaries:
+LOAD Distinct
+    F1 as RegionRu,
+    F2 as RegionEn,
+    F3 as RegionKg
+FROM [lib://OCDSKG_dictionaries]
+(html, utf8, embedded labels, table is @1, url is 'https://docs.google.com/spreadsheets/u/1/d/***')
+Where F1<>'Ru' AND Len(F1)>0;
 
-set Verbatim = 1; // To load field records as names of new fields that have multiple spaces
+Store Region_Dictionaries into [$(DIC_QVD_PATH)Region_Dictionaries.qvd] (qvd);
+Drop table Region_Dictionaries;
+
+
+set Verbatim = 1; 
 
 Multilang_Labels:
 NoConcatenate
@@ -238,13 +212,12 @@ LOAD
     F4 as En,
     F5 as Kg
 FROM [lib://OCDSKG_dictionaries]
-(html, utf8, embedded labels, table is @1, url is 'https://***')
+(html, utf8, embedded labels, table is @1, url is 'https://docs.google.com/spreadsheets/u/1/d/***')
 where F1 <> 'Index' and len(F1)>0;
 
 store Multilang_Labels into [$(DIC_QVD_PATH)/Multilang_Labels.qvd] (qvd);
 Drop table Multilang_Labels;
 
-// Descriptions of sheets and objects
 TranslationsHelp:
 LOAD 
     Index,
@@ -252,11 +225,10 @@ LOAD
     En,
     Kg
 FROM [lib://OCDSKG_dictionaries]
-(html, utf8, embedded labels, table is @1, url is 'https://***')
+(html, utf8, embedded labels, table is @1, url is 'https://docs.google.com/spreadsheets/u/1/d/***')
 Where Len(Index)>0;
 
 Store TranslationsHelp into [$(DIC_QVD_PATH)TranslationsHelp.qvd] (qvd);
-
 Drop Table TranslationsHelp;
 
 CountryMap:
@@ -264,15 +236,14 @@ LOAD
     F1 as CountryDBName,
     F2 as CountryNewDBName
 FROM [lib://OCDSKG_dictionaries]
-(html, utf8, embedded labels, table is @1, url is 'https://***')
+(html, utf8, embedded labels, table is @1, url is 'https://docs.google.com/spreadsheets/u/1/d/***')
 Where F1 <> 'DBName';
 
 Store CountryMap into lib://OCDSKGData/02_QVD_DB/01_Dictionary/CountryMap.qvd (qvd);
 Drop table CountryMap;
-
+//exit script; 
 set Verbatim = 0;
 
-// Loading of exchange rates - for dates and currencies when price offers arrived
 LIB CONNECT TO 'OCDSKG';
 
 RestConnectorMasterTable:
@@ -287,7 +258,8 @@ URL "$(vCurrencyURL)"
 );
 
 Currency:
-LOAD	Date([date]) AS CurrencyDate,
+LOAD Distinct	
+	Date([date]) AS CurrencyDate,
 	[rate] AS CurrencyRate,
 	[code] AS CurrencyCode,
 	[name] AS CurrencyName
@@ -296,8 +268,8 @@ RESIDENT RestConnectorMasterTable;
 DROP TABLE RestConnectorMasterTable;
 
 Store Currency into [$(DIC_QVD_PATH)Currency.qvd] (qvd);
+Drop Table Currency;
 
-// Property Directory
 RestConnectorMasterTable:
 SQL SELECT 
 	"organizationId",
@@ -308,7 +280,7 @@ URL "$(vLegalFormURL)"
 );
 
 legalForms:
-LOAD	
+LOAD Distinct
 	[organizationId] AS organizationId,
 	[legalForm] AS legalForm
 RESIDENT RestConnectorMasterTable;
@@ -316,10 +288,9 @@ RESIDENT RestConnectorMasterTable;
 DROP TABLE RestConnectorMasterTable;
 
 Store legalForms into [$(DIC_QVD_PATH)legalForms.qvd] (qvd);
-
 Drop Table legalForms;
 
-// Loading a portion of tender identifiers since the last timestamp
+//3. Get Offset
 LIB CONNECT TO 'OCDSKG';
 
 IF NOT IsNull(FileSize('$(DIC_QVD_PATH)OffsetTable.txt')) THEN
@@ -336,476 +307,387 @@ IF NOT IsNull(FileSize('$(DIC_QVD_PATH)OffsetTable.txt')) THEN
 
   ELSE
 
-  Let vCurrentReloadSessionOffset = vOffsetBase;
-ENDIF;
+  Let vCurrentReloadSessionOffset = vSinceBase;
+ENDIF
 
-LET vURL = vBaseURL&vOffsetNo&vCurrentReloadSessionOffset&vPageNo&vPageNoBase&vPageSize;
+LET vURL = vBaseURL&vOffsetNo&vPageSize&vSince&vCurrentReloadSessionOffset;
 
-TenderHeadersAll:
-LOAD * Inline [
-TenderId, TenderModificateDateTime, OffsetDateTime
+//
+DO
+//
+
+TRACE Main cycle with Offset saving;
+
+RestConnectorMasterTable:
+Load * Inline [
+__FK_releases, ocid
 ];
 
-DO //Beginning of the cycle for loading identifiers
+//4. Tender MasterTable Full
+SET vStep = 1;
 
-  TRACE;
+DO
+  TRACE RestConnectorMasterTable Cycle;
   TRACE $(vURL);
+  TRACE Step $(vStep);
 
-  RestConnectorMasterTable:
+  RestConnectorMasterTable_:
+  NoConcatenate
   SQL SELECT 
-      "totalPages",
-      "totalElements",
-      "last",
-      "first",
-      "__KEY_root",
-      (SELECT 
+        "publishedDate",
+        "__KEY_root",
+        (SELECT
           "ocid",
-          "date",
-          "__FK_content"
-      FROM "content" FK "__FK_content"),
-      (SELECT 
-          "pageSize",
-          "pageNumber",
-          "offset",
-          "paged",
-          "unpaged",
-          "__KEY_pageable",
-          "__FK_pageable",
+          "id" AS "id_u21",
+          "date" AS "date_u4",
           (SELECT 
-              "sorted",
-              "unsorted",
-              "__FK_sort"
-          FROM "sort" FK "__FK_sort")
-      FROM "pageable" PK "__KEY_pageable" FK "__FK_pageable")
+              "@Value" AS "@Value_u1",
+              "__FK_tag"
+          FROM "tag" FK "__FK_tag" ArrayValueAlias "@Value_u1"),
+          "initiationType",
+          "__KEY_releases",
+          "__FK_releases",
+          (SELECT 
+              "id" AS "id_u0",
+              "__KEY_parties",
+              "__FK_parties",
+              (SELECT 
+                  "scheme",
+                  "id",
+                  "legalName",
+      //			"legalName_ru",
+                  "legalName_kg",
+                  "__FK_identifier"
+              FROM "identifier" FK "__FK_identifier"),
+              (SELECT 
+                  "ateCode",
+                  "countryName",
+                  "region",
+                  "subregion",
+                  "district",
+                  "subdistrict",
+                  "subsubdistrict",
+                  "locality",
+                  "streetAddress",
+                  "__FK_address"
+              FROM "address" FK "__FK_address"),
+//               (SELECT 
+//                   "name",
+//                   "email",
+//                   "telephone",
+//                   "role",
+//                   "__FK_additionalContactPoints"
+//               FROM "additionalContactPoints" FK "__FK_additionalContactPoints"),
+              (SELECT 
+                  "@Value",
+                  "__FK_roles"
+              FROM "roles" FK "__FK_roles" ArrayValueAlias "@Value")
+          FROM "parties" PK "__KEY_parties" FK "__FK_parties"),
+          (SELECT 
+              "id" AS "id_u10",
+              "title" AS "title_u1",
+              "tenderNumber",
+              "hasPrequalification",
+              "status" AS "status_u0",
+              "statusDetails",
+              "datePublished",
+              "date" AS "date_u0",
+              "procurementMethod",
+              "procurementMethodDetails",
+              "submissionMethod",
+              "procurementMethodRationale",
+              "procurementSubMethodDetails",
+              "mainProcurementCategory",
+              "__KEY_tender",
+              "__FK_tender",
+              (SELECT 
+                  "amount",
+                  "currency",
+                  "__FK_value"
+              FROM "value" FK "__FK_value"),
+              (SELECT 
+                  "startDate",
+                  "endDate",
+                  "__FK_tenderPeriod"
+              FROM "tenderPeriod" FK "__FK_tenderPeriod"),
+              (SELECT 
+                  "startDate" AS "startDate_u0",
+                  "endDate" AS "endDate_u0",
+                  "__FK_enquiryPeriod"
+              FROM "enquiryPeriod" FK "__FK_enquiryPeriod"),
+              (SELECT 
+                  "id" AS "id_u1",
+                  "type",
+                  "__FK_qualificationRequirements"
+              FROM "qualificationRequirements" FK "__FK_qualificationRequirements"),
+              (SELECT 
+                  "id" AS "id_u2",
+                  "status",
+                  "lotNumber",
+                  "relatedPlanID",
+                  "deliveryTerms",
+                  "title" AS "title_u2",
+                  "__KEY_lots",
+                  "__FK_lots",
+                  (SELECT 
+                      "amount" AS "amount_u0",
+                      "currency" AS "currency_u0",
+                      "__FK_value_u0"
+                  FROM "value" FK "__FK_value_u0")
+              FROM "lots" PK "__KEY_lots" FK "__FK_lots"),
+              (SELECT 
+                  "id" AS "id_u5",
+                  "relatedLot",
+                  "quantity",
+                  "__KEY_items",
+                  "__FK_items",
+                  (SELECT 
+                      "scheme" AS "scheme_u0",
+                      "id" AS "id_u3",
+                      "description" AS "description_u1",
+                      "__FK_classification"
+                  FROM "classification" FK "__FK_classification"),
+                  (SELECT 
+                      "id" AS "id_u4",
+                      "name" AS "name_u0",
+                      "__KEY_unit",
+                      "__FK_unit",
+                      (SELECT 
+                          "amount" AS "amount_u1",
+                          "currency" AS "currency_u1",
+                          "__FK_value_u1"
+                      FROM "value" FK "__FK_value_u1")
+                  FROM "unit" PK "__KEY_unit" FK "__FK_unit")
+              FROM "items" PK "__KEY_items" FK "__FK_items"),
+              (SELECT 
+                  "id" AS "id_u6",
+                  "lateDeliveryRate",
+                  "latePaymentRate",
+                  "lateGuaranteeRate",
+                  "guaranteePercent",
+                  "maxDeductibleAmountDelivery",
+                  "maxDeductibleAmountPayment",
+                  "maxDeductibleAmountGuarantee",
+                  "hasGuarantee",
+                  "hasInsurance",
+                  "hasRelatedServices",
+                  "hasSpares",
+                  "hasTechnicalControl",
+                  "hasPrepayment",
+                  "hasAcceptancePayment",
+                  "hasShipmentPayment",
+                  "prepaymentPercent",
+                  "acceptancePaymentPercent",
+                  "shipmentPaymentPercent",
+                  "insuranceType",
+                  "hasArbitralTribunal",
+                  "__FK_conditionOfContract"
+              FROM "conditionOfContract" FK "__FK_conditionOfContract"),
+              (SELECT 
+                  "id" AS "id_u7",
+                  "datePublished" AS "datePublished_tender_document",
+                  "__KEY_documents",
+                  "__FK_documents",
+                  (SELECT 
+                    "@Value" AS "@Value_u3",
+                    "__FK_relatedItems"
+                  FROM "relatedItems" FK "__FK_relatedItems" ArrayValueAlias "@Value_u3"),
+                  (SELECT 
+					"@Value" AS "@Value_u4",
+					"__FK_relatedLots_u1"
+				  FROM "relatedLots" FK "__FK_relatedLots_u1" ArrayValueAlias "@Value_u4")
+			  FROM "documents" PK "__KEY_documents" FK "__FK_documents"),
+              (SELECT 
+                  "id" AS "id_u9",
+                  "date",
+                  "description",
+                  "dateAnswered",
+                  "answer",
+                  "__KEY_enquiries",
+                  "__FK_enquiries",
+                  (SELECT 
+                      "id" AS "id_u8",
+                      "__FK_author"
+                  FROM "author" FK "__FK_author")
+              FROM "enquiries" PK "__KEY_enquiries" FK "__FK_enquiries")
+          FROM "tender" PK "__KEY_tender" FK "__FK_tender"),
+          (SELECT 
+              "__KEY_bids",
+              "__FK_bids",
+              (SELECT 
+                  "id" AS "id_u14",
+                  "status" AS "status_u1",
+                  "date" AS "date_u1",
+      //            "dateDisclosed",
+                  "__KEY_details",
+                  "__FK_details",
+                  (SELECT 
+                      "id" AS "id_u11",
+                      "__KEY_relatedLots",
+                      "__FK_relatedLots",
+                      (SELECT 
+                          "amount" AS "amount_u2",
+                          "currency" AS "currency_u2",
+                          "__FK_value_u2"
+                      FROM "value" FK "__FK_value_u2")
+                  FROM "relatedLots" PK "__KEY_relatedLots" FK "__FK_relatedLots"),
+                  (SELECT 
+                      "id" AS "id_u12",
+                      "relatedLot" AS "relatedLot_u1",
+                      "relatedItem" AS "relatedItem_u0",
+                      "__KEY_priceProposal",
+                      "__FK_priceProposal",
+                      (SELECT 
+                          "__KEY_unit_u0",
+                          "__FK_unit_u0",
+                          (SELECT 
+                              "amount" AS "amount_u3",
+                              "currency" AS "currency_u3",
+                              "__FK_value_u3"
+                          FROM "value" FK "__FK_value_u3")
+                      FROM "unit" PK "__KEY_unit_u0" FK "__FK_unit_u0")
+                  FROM "priceProposal" PK "__KEY_priceProposal" FK "__FK_priceProposal"),
+                  (SELECT 
+                      "id" AS "id_u13",
+                      "__FK_tenderers"
+                  FROM "tenderers" FK "__FK_tenderers")
+              FROM "details" PK "__KEY_details" FK "__FK_details")
+          FROM "bids" PK "__KEY_bids" FK "__FK_bids"),
+          (SELECT 
+              "id" AS "id_u17",
+              "status" AS "status_u2",
+              "dateSubmitted",
+              "type" AS "type_u0",
+              "complaintNumber",
+              "title" AS "title_u0",
+              "description" AS "description_u0",
+              "reviewDate",
+              "responseDate",
+              "__KEY_complaints",
+              "__FK_complaints",
+              (SELECT 
+                  "id" AS "id_u15",
+                  "__FK_author_u0"
+              FROM "author" FK "__FK_author_u0"),
+              (SELECT 
+                  "id" AS "id_u16",
+                  "datePublished" AS "datePublished_u0",
+                  "documentType",
+                  "title",
+                  "__FK_documents_u0"
+              FROM "documents" FK "__FK_documents_u0")
+          FROM "complaints" PK "__KEY_complaints" FK "__FK_complaints"),
+          (SELECT 
+              "id" AS "id_u18",
+              "status" AS "status_u3",
+      //		"relatedLot" AS "relatedLot_u2",
+              (SELECT 
+                  "@Value" AS "@Value_u2",
+                  "__FK_relatedLots_u0"
+              FROM "relatedLots" FK "__FK_relatedLots_u0" ArrayValueAlias "@Value_u2"),
+              "relatedBid",
+              "date" AS "date_u2", 
+      // 		Skype D. Arkharov 08.05.2019
+      //        "datePublished"  AS "datePublished_u1", 
+              "__KEY_awards",
+              "__FK_awards",
+              (SELECT 
+                  "amount" AS "amount_u4",
+                  "currency" AS "currency_u4",
+                  "__FK_value_u4"
+              FROM "value" FK "__FK_value_u4")
+          FROM "awards" PK "__KEY_awards" FK "__FK_awards"),
+          (SELECT 
+              "id" AS "id_u20",
+              "contractNumber",
+      //		"status" AS "status_u4",
+      //		"date" AS "date_u3",
+              "dateSigned",
+              "__KEY_contracts",
+              "__FK_contracts",
+              (SELECT 
+                  "@Value" AS "@Value_u0",
+                  "__FK_awardIDs"
+              FROM "awardIDs" FK "__FK_awardIDs" ArrayValueAlias "@Value_u0"),
+      // 		(SELECT 
+      // 			"id" AS "id_u19",
+      // 			"relatedLot" AS "relatedLot_u3",
+      // 			"__FK_items_u0"
+      // 		FROM "items" FK "__FK_items_u0"),
+              (SELECT 
+                  "amount" AS "amount_u5",
+                  "currency" AS "currency_u5",
+                  "amountDiscounted",
+                  "__FK_value_u5"
+              FROM "value" FK "__FK_value_u5")
+          FROM "contracts" PK "__KEY_contracts" FK "__FK_contracts"),
+      // 	(SELECT 
+      // 		"relationship",
+      // 		"identifier",
+      // 		"__FK_relatedProcesses"
+      // 	FROM "relatedProcesses" FK "__FK_relatedProcesses")
+          (SELECT 
+            "identifier",
+            "tenderNumber" AS "tenderNumber_u0",
+            "id" AS "id_u22",
+      //      "scheme" AS "scheme_u1",
+            "__KEY_relatedProcesses",
+            "__FK_relatedProcesses",
+            (SELECT 
+              "@Value" AS "@Value_u6",
+              "__FK_relationship"
+            FROM "relationship" FK "__FK_relationship" ArrayValueAlias "@Value_u6")
+          FROM "relatedProcesses" PK "__KEY_relatedProcesses" FK "__FK_relatedProcesses")
+        FROM "releases" PK "__KEY_releases" FK "__FK_releases")
   FROM JSON (wrap on) "root" PK "__KEY_root"
   WITH CONNECTION(URL "$(vURL)");
 
-  [TenderHeadersTmp]:
-  LOAD	[ocid] AS [ocid],
-      [date] AS [date],
-      [__FK_content] AS [__KEY_root]
-  RESIDENT RestConnectorMasterTable
-  WHERE NOT IsNull([__FK_content]);
+  RCMTReleases:
+  LOAD	
+      [ocid]
+  RESIDENT RestConnectorMasterTable_
+  WHERE NOT IsNull([__FK_releases]);
 
-  [pageable]:
-  LOAD
-      [pageNumber] AS [pageNumber],
-      [__KEY_pageable] AS [__KEY_pageable],
-      [__FK_pageable] AS [__KEY_root]
-  RESIDENT RestConnectorMasterTable
-  WHERE NOT IsNull([__FK_pageable]);
+  LET vNoOfRCMTReleases = NoOfRows('RCMTReleases');
+  DROP TABLE RCMTReleases;
 
+  IF vNoOfRCMTReleases > 0 THEN
+    Concatenate (RestConnectorMasterTable)
+    Load
+         *
+    Resident RestConnectorMasterTable_;
+ 
+    OffsetTable:
+    LOAD	
+        LastValue([publishedDate]) as OffsetDateTime
+    RESIDENT RestConnectorMasterTable
+    WHERE NOT IsNull([__KEY_root])
+    Order By [publishedDate];
 
-  [root]:
-  LOAD	[totalPages] AS [totalPages],
-      [totalElements] AS [totalElements],
-      $(vBoolConvert([last], 0)) AS [last],
-      [first] AS [first]
-  RESIDENT RestConnectorMasterTable
-  WHERE NOT IsNull([__KEY_root]);
+    LET vCurrentReloadSessionOffset = Peek('OffsetDateTime', -1, 'OffsetTable');
+    DROP Table OffsetTable;
 
-  DROP TABLE RestConnectorMasterTable;
-
-  Let vTotalElements = Peek('totalElements', -1, 'root');
-
-  if $(vTotalElements) = 0 THEN
-
-    Trace 'No new releases';
-
-    exit script;
-
-  end if;
-
-
-
-  Let vIsLastPage = Peek('last', -1, 'root');
-
-  Let vNextPageNumber = num(Peek('pageNumber', -1, 'pageable'))+1;
-
-  LET vRowsQtyTenderHeaders = NoOfRows('TenderHeadersTmp');
-
-  IF $(vRowsQtyTenderHeaders) > 0 THEN
-      Concatenate (TenderHeadersAll)
-      LOAD Distinct
-          [ocid] as TenderId,
-          $(vDateConvert(date)) as TenderModificateDateTime,
-          date as OffsetDateTime,
-          '$(vURL)' as THUri
-      Resident TenderHeadersTmp;	
-  ENDIF;
+    LET vURL = vBaseURL&vOffsetNo&vPageSize&vSince&vCurrentReloadSessionOffset;
+  ENDIF
   
-  DROP Tables TenderHeadersTmp, root, pageable;
+  Drop Table RestConnectorMasterTable_;
+  LET vStep = vStep + 1;
   
-  Trace;
-  Trace $(vNextPageNumber);
+LOOP While vStep <= vLoadSteps AND vNoOfRCMTReleases > 0
 
-  LET vURL = vBaseURL&vOffsetNo&vCurrentReloadSessionOffset&vPageNo&vNextPageNumber&vPageSize;
+//5. Store to QVD Full
+TRACE Store to QVD files;
 
-//   trace;
-//   trace $(vURL);
-    
-LOOP WHILE $(vIsLastPage) <> 1;
+Releases:
+LOAD	
+	[ocid]
+RESIDENT RestConnectorMasterTable
+WHERE NOT IsNull([__FK_releases]);
 
+LET vNoOfReleases = NoOfRows('Releases');
+DROP TABLE Releases;
 
-STORE TenderHeadersAll into [$(FILES_PATH)TenderHeadersAll.qvd] (qvd); // For Debug
-
-//Exclusion of entries with identical tender identifiers
-TenderHeaders:
-NoConcatenate
-LOAD 
-	TenderId,
-	LastValue(TenderModificateDateTime) as TenderModificateDateTime,
-	LastValue(OffsetDateTime) as OffsetDateTime,
-    LastValue(THUri) as THUri
-Resident TenderHeadersAll	
-Group by TenderId
-Order By TenderModificateDateTime;
-
-DROP Table TenderHeadersAll;
-
-//STORE TenderHeaders into [$(FILES_PATH)TenderHeaders.qvd] (qvd); // For Debug
-
-LET vAllRowsQty = NoOfRows('TenderHeaders');
-
-//STORE OffsetTable INTO  [$(FILES_PATH)OffsetTable.txt] (txt); // For Debug
-// DROP Table OffsetTable;
-
-//If there were no new identifiers, exit
-IF $(vAllRowsQty) = 0 THEN
-
-  TRACE WARNING! No tenders changed;
-
-  EXIT SCRIPT;
-ENDIF;
-
-// A breakdown into portions for storage in QVD
-TenderHeadersBase:
-LOAD TenderId as TenderIdBase, 
-     TenderModificateDateTime as TenderModificateDateTimeBase,
-     OffsetDateTime as OffsetDateTimeBase,
-     THUri as THUriBase,
-     if(IsNull(Previous(THUri)), 1, if(Previous(THUri)=THUri, Peek('BatchNo', -1, 'TenderHeadersBase'),  RangeSum(Peek('BatchNo', -1, 'TenderHeadersBase'), 1) )) as BatchNo
-Resident  TenderHeaders
-Order by TenderModificateDateTime;   
-
-STORE TenderHeadersBase into [$(FILES_PATH)TenderHeadersBase.qvd] (qvd); // For Debug
-
-DROP Table TenderHeaders;
-
-BatchTable:
-LOAD 	 
-	 Only(BatchNo) as Batch
-Resident TenderHeadersBase
-Group By BatchNo
-Order By BatchNo;
-
-//STORE BatchTable into [$(FILES_PATH)BatchTable.qvd] (qvd); // For Debug
-
-LET vLastBatch = Peek('Batch', -1, 'BatchTable');
-LET vFirstBatch = Peek('Batch', 0, 'BatchTable');
-
-//
-FOR vBatchNo =  $(vFirstBatch) to  $(vLastBatch) step vStep 
-//
-
-LET vBatchNoStep = $(vBatchNo) + vStep - 1;
-
-TRACE BatchNo $(vBatchNo) - $(vBatchNoStep);
-
-TenderHeaders:
-NoConcatenate
-LOAD TenderIdBase as TenderId, 
-     OffsetDateTimeBase as OffsetDateTime,
-     THUriBase as THUri
-Resident  TenderHeadersBase
-Where BatchNo >= $(vBatchNo) AND BatchNo <= $(vBatchNoStep)
-Order By BatchNo;
-
-LET vRowsQty = NoOfRows('TenderHeaders'); 
-
-FOR Each vTenderId in FieldValueList('TenderId') 
-
-LET vURL = vBaseURL&'/'&vTenderId; 
-
-RestConnectorMasterTable:
-SQL SELECT 
-	"ocid",
-	"id" AS "id_u21",
-	"date" AS "date_u4",
-	"tag",
-	"initiationType",
-	"__KEY_root",
-    	(SELECT 
-		"$oid",
-		"__FK__id"
-	FROM "_id" FK "__FK__id"),
-    (SELECT 
-		"@Value" AS "@Value_u1",
-		"__FK_eventErrors"
-	FROM "eventErrors" FK "__FK_eventErrors" ArrayValueAlias "@Value_u1"),
-	(SELECT 
-		"id" AS "id_u0",
-		"__KEY_parties",
-		"__FK_parties",
-		(SELECT 
-			"scheme",
-			"id",
-			"legalName",
-			"legalName_ru",
-			"legalName_kg",
-			"__FK_identifier"
-		FROM "identifier" FK "__FK_identifier"),
-		(SELECT 
-			"ateCode",
-			"countryName",
-			"region",
-			"subregion",
-			"district",
-			"subdistrict",
-			"subsubdistrict",
-			"locality",
-			"streetAddress",
-			"__FK_address"
-		FROM "address" FK "__FK_address"),
-		(SELECT 
-			"name",
-			"email",
-			"telephone",
-			"role",
-			"__FK_contactPoints"
-		FROM "contactPoints" FK "__FK_contactPoints"),
-		(SELECT 
-			"@Value",
-			"__FK_roles"
-		FROM "roles" FK "__FK_roles" ArrayValueAlias "@Value")
-	FROM "parties" PK "__KEY_parties" FK "__FK_parties"),
-	(SELECT 
-		"id" AS "id_u10",
-		"status" AS "status_u0",
-		"currentStage",
-		"datePublished",
-		"date" AS "date_u0",
-		"procurementMethod",
-		"procurementMethodDetails",
-        "submissionMethod",
-		"procurementMethodRationale",
-		"__KEY_tender",
-		"__FK_tender",
-		(SELECT 
-			"amount",
-			"currency",
-			"__FK_value"
-		FROM "value" FK "__FK_value"),
-		(SELECT 
-			"startDate",
-			"endDate",
-			"__FK_tenderPeriod"
-		FROM "tenderPeriod" FK "__FK_tenderPeriod"),
-		(SELECT 
-			"startDate" AS "startDate_u0",
-			"endDate" AS "endDate_u0",
-			"__FK_enquiryPeriod"
-		FROM "enquiryPeriod" FK "__FK_enquiryPeriod"),
-		(SELECT 
-			"id" AS "id_u1",
-			"type",
-			"__FK_qualificationRequirements"
-		FROM "qualificationRequirements" FK "__FK_qualificationRequirements"),
-		(SELECT 
-			"id" AS "id_u2",
-			"status",
-			"__KEY_lots",
-			"__FK_lots",
-			(SELECT 
-				"amount" AS "amount_u0",
-				"currency" AS "currency_u0",
-				"__FK_value_u0"
-			FROM "value" FK "__FK_value_u0")
-		FROM "lots" PK "__KEY_lots" FK "__FK_lots"),
-		(SELECT 
-			"id" AS "id_u5",
-			"relatedLot",
-			"quantity",
-			"__KEY_items",
-			"__FK_items",
-			(SELECT 
-				"scheme" AS "scheme_u0",
-				"id" AS "id_u3",
-				"__FK_classification"
-			FROM "classification" FK "__FK_classification"),
-			(SELECT 
-				"id" AS "id_u4",
-				"name" AS "name_u0",
-				"__KEY_unit",
-				"__FK_unit",
-				(SELECT 
-					"amount" AS "amount_u1",
-					"currency" AS "currency_u1",
-					"__FK_value_u1"
-				FROM "value" FK "__FK_value_u1")
-			FROM "unit" PK "__KEY_unit" FK "__FK_unit")
-		FROM "items" PK "__KEY_items" FK "__FK_items"),
-		(SELECT 
-			"id" AS "id_u6",
-			"lateDeliveryRate",
-			"latePaymentRate",
-			"lateGuaranteeRate",
-			"guaranteePercent",
-			"maxDeductibleAmountDelivery",
-			"maxDeductibleAmountPayment",
-			"maxDeductibleAmountGuarantee",
-			"hasGuarantee",
-			"hasInsurance",
-			"hasRelatedServices",
-			"hasSpares",
-			"hasTechnicalControl",
-			"hasPrepayment",
-			"hasAcceptancePayment",
-			"hasShipmentPayment",
-			"prepaymentPercent",
-			"acceptancePaymentPercent",
-			"shipmentPaymentPercent",
-			"insuranceType",
-			"hasArbitralTribunal",
-			"__FK_conditionOfContract"
-		FROM "conditionOfContract" FK "__FK_conditionOfContract"),
-		(SELECT 
-			"id" AS "id_u7",
-			"relatedItem",
-			"relatedLot" AS "relatedLot_u0",
-            "datePublished" AS "datePublished_tender_document",
-			"__FK_documents"
-		FROM "documents" FK "__FK_documents"),
-		(SELECT 
-			"id" AS "id_u9",
-			"date",
-			"description",
-			"dateAnswered",
-			"answer",
-			"__KEY_enquiries",
-			"__FK_enquiries",
-			(SELECT 
-				"id" AS "id_u8",
-				"__FK_author"
-			FROM "author" FK "__FK_author")
-		FROM "enquiries" PK "__KEY_enquiries" FK "__FK_enquiries")
-	FROM "tender" PK "__KEY_tender" FK "__FK_tender"),
-	(SELECT 
-		"__KEY_bids",
-		"__FK_bids",
-		(SELECT 
-			"id" AS "id_u14",
-			"status" AS "status_u1",
-			"date" AS "date_u1",
-            "dateDisclosed",
-			"__KEY_details",
-			"__FK_details",
-			(SELECT 
-				"id" AS "id_u11",
-				"__KEY_relatedLots",
-				"__FK_relatedLots",
-				(SELECT 
-					"amount" AS "amount_u2",
-					"currency" AS "currency_u2",
-					"__FK_value_u2"
-				FROM "value" FK "__FK_value_u2")
-			FROM "relatedLots" PK "__KEY_relatedLots" FK "__FK_relatedLots"),
-			(SELECT 
-				"id" AS "id_u12",
-				"relatedLot" AS "relatedLot_u1",
-				"relatedItem" AS "relatedItem_u0",
-				"__KEY_priceProposals",
-				"__FK_priceProposals",
-				(SELECT 
-					"__KEY_unit_u0",
-					"__FK_unit_u0",
-					(SELECT 
-						"amount" AS "amount_u3",
-						"currency" AS "currency_u3",
-						"__FK_value_u3"
-					FROM "value" FK "__FK_value_u3")
-				FROM "unit" PK "__KEY_unit_u0" FK "__FK_unit_u0")
-			FROM "priceProposals" PK "__KEY_priceProposals" FK "__FK_priceProposals"),
-			(SELECT 
-				"id" AS "id_u13",
-				"__FK_tenderers"
-			FROM "tenderers" FK "__FK_tenderers")
-		FROM "details" PK "__KEY_details" FK "__FK_details")
-	FROM "bids" PK "__KEY_bids" FK "__FK_bids"),
-	(SELECT 
-		"id" AS "id_u17",
-		"status" AS "status_u2",
-		"submissionDate",
-		"type" AS "type_u0",
-		"complaintID",
-		"title" AS "title_u0",
-		"description" AS "description_u0",
-		"reviewDate",
-		"responseDate",
-		"__KEY_complaints",
-		"__FK_complaints",
-		(SELECT 
-			"id" AS "id_u15",
-			"__FK_author_u0"
-		FROM "author" FK "__FK_author_u0"),
-		(SELECT 
-			"id" AS "id_u16",
-			"datePublished" AS "datePublished_u0",
-			"documentType",
-			"title",
-			"__FK_documents_u0"
-		FROM "documents" FK "__FK_documents_u0")
-	FROM "complaints" PK "__KEY_complaints" FK "__FK_complaints"),
-	(SELECT 
-		"id" AS "id_u18",
-		"status" AS "status_u3",
-//		"relatedLot" AS "relatedLot_u2",
-        (SELECT 
-			"@Value" AS "@Value_u2",
-			"__FK_relatedLots_u0"
-		FROM "relatedLots" FK "__FK_relatedLots_u0" ArrayValueAlias "@Value_u2"),
-		"relatedBid",
-        "datePublished"  AS "datePublished_u1", 
-		"__KEY_awards",
-		"__FK_awards",
-		(SELECT 
-			"amount" AS "amount_u4",
-			"currency" AS "currency_u4",
-			"__FK_value_u4"
-		FROM "value" FK "__FK_value_u4")
-	FROM "awards" PK "__KEY_awards" FK "__FK_awards"),
-	(SELECT 
-		"id" AS "id_u20",
-		"status" AS "status_u4",
-		"date" AS "date_u3",
-		"dateSigned",
-		"__KEY_contracts",
-		"__FK_contracts",
-		(SELECT 
-			"@Value" AS "@Value_u0",
-			"__FK_awardIDs"
-		FROM "awardIDs" FK "__FK_awardIDs" ArrayValueAlias "@Value_u0"),
-		(SELECT 
-			"id" AS "id_u19",
-			"relatedLot" AS "relatedLot_u3",
-			"__FK_items_u0"
-		FROM "items" FK "__FK_items_u0"),
-		(SELECT 
-			"amount" AS "amount_u5",
-			"currency" AS "currency_u5",
-			"__FK_value_u5"
-		FROM "value" FK "__FK_value_u5")
-	FROM "contracts" PK "__KEY_contracts" FK "__FK_contracts"),
-	(SELECT 
-		"relationship",
-		"identifier",
-		"__FK_relatedProcesses"
-	FROM "relatedProcesses" FK "__FK_relatedProcesses")
-FROM JSON (wrap on) "root" PK "__KEY_root"
-WITH CONNECTION(URL "$(vURL)");
-
-
-NEXT vTenderId;
+IF vNoOfReleases > 0 THEN
 
 //========1. Transactions========
 
@@ -814,20 +696,21 @@ NEXT vTenderId;
 LOAD	[ocid] AS [IDReleaseOCIDOrig],
 	[id_u21] AS [release_id],
 	$(vDateConvert([date_u4])) AS [release_date],
-	[tag] AS [release_tag],
+//	[tag] AS [release_tag],
 	[initiationType] AS [release_initiationType],
-	[__KEY_root] AS [__KEY_root]
+    [__KEY_releases],
+	[__FK_releases] AS [__KEY_root]
 RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__KEY_root]);
+WHERE NOT IsNull([__FK_releases]);
 
-
-left join(releases)
-LOAD	[$oid] AS [release_oid],
-	[__FK__id] AS [__KEY_root]
+Left Join (releases)
+LOAD	Concat([@Value_u1], '||') AS [release_tag],
+	[__FK_tag] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__FK__id]);
+WHERE NOT IsNull([__FK_tag])
+Group By [__FK_tag];
 
-//The step of adding reviewBody to the release
+
 [roles]:
 LOAD	//[@Value] AS [@Value],
 	[__FK_roles] AS [__KEY_parties]
@@ -840,13 +723,13 @@ left join(roles)
 //[parties]:
 LOAD Distinct	
 	[id_u0] AS [IDReviewBodyOrig],
-	[__KEY_parties] AS [__KEY_parties],
-	[__FK_parties] AS [__KEY_root]
+	[__KEY_parties],
+	[__FK_parties] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_parties]);
 
 left join(releases)
-Load [__KEY_root],
+Load [__KEY_releases],
 	 IDReviewBodyOrig
 Resident roles;
 
@@ -860,7 +743,7 @@ load [release_id],
 	[release_date],
 	[release_tag],
 	[release_initiationType],
-    [release_oid],
+//    [release_oid],
     IDReviewBodyOrig
 FROM [$(TRN_QVD_PATH)releases.qvd] (qvd)
 where not exists (IDReleaseOCIDOrig);
@@ -871,9 +754,9 @@ NoConcatenate
 LOAD [release_id],
     [IDReleaseOCIDOrig],
 	[release_date],
-	[release_tag],
+	if(Len([release_tag])>0, [release_tag], Null()) as [release_tag],
 	[release_initiationType],
-    [release_oid],
+//    [release_oid],
     IDReviewBodyOrig
     ,AutoNumber(IDReleaseOCIDOrig, 'IDReleaseOCID') As IDReleaseOCID
 Resident releases;
@@ -888,7 +771,10 @@ Drop table Release;
 [tender]:
 LOAD	[id_u10] AS [IDTenderOrig],
 	[status_u0] AS [tender_status],
-	[currentStage] AS [tender_currentStage],
+    [tenderNumber],
+    $(vBoolConvert([hasPrequalification], 0)) AS tender_hasPrequalification,
+    [title_u1] AS [tender_title],
+	[statusDetails] AS [tender_statusDetails],
 	$(vDateConvert([datePublished])) AS [tender_date_timePublished],
     $(vFloorDateConvert([datePublished])) AS [tender_datePublished],
 	$(vDateConvert([date_u0])) AS [tender_date_time],
@@ -896,9 +782,11 @@ LOAD	[id_u10] AS [IDTenderOrig],
 	[procurementMethod] AS [tender_procurementMethod],
 	[procurementMethodDetails] AS [tender_procurementMethodDetails],
 	[procurementMethodRationale] AS [tender_procurementMethodRationale],
-    [submissionMethod] AS [tender_submissionMethod],
+    [procurementSubMethodDetails] AS [tender_procurementSubMethodDetails],
+    [mainProcurementCategory] AS [tender_mainProcurementCategory],
+//    [submissionMethod] AS [tender_submissionMethod],
 	[__KEY_tender] AS [__KEY_tender],
-	[__FK_tender] AS [__KEY_root]
+	[__FK_tender] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_tender]);
 
@@ -936,11 +824,11 @@ left join(tender)
 LOAD	
     [ocid] AS [IDReleaseOCIDOrig],
     [ocid] AS [IDReleaseOCID],
-	[__KEY_root] AS [__KEY_root]
+	[__KEY_releases]
 RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__KEY_root]);
+WHERE NOT IsNull([__FK_releases]);
 
-//The stage of adding the buyer to the procedure
+//Этап добавления закупщика в процедуру
 [roles]:
 LOAD	[@Value] AS [@Value],
 	[__FK_roles] AS [__KEY_parties]
@@ -954,24 +842,24 @@ left join(roles)
 LOAD Distinct	
 	[id_u0] AS [IDParty],
 	[__KEY_parties] AS [__KEY_parties],
-	[__FK_parties] AS [__KEY_root]
+	[__FK_parties] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_parties]);
 
 left join(tender)
 Load 
-	 [__KEY_root],
+	 [__KEY_releases],
 	 [IDParty] AS [IDbuyerOrig]
 Resident roles
 where [@Value] = 'buyer'
 ;
 
 left Join(tender)
-Load [__KEY_root],
+Load [__KEY_releases],
 	 count(distinct [IDParty]) as tender_number_of_allowedTenderers
 Resident roles
 Where [@Value] = 'allowedTenderer'
-Group by [__KEY_root]
+Group by [__KEY_releases]
 ;
 
 drop table roles;
@@ -1008,7 +896,10 @@ if NOT Isnull( FileSize('$(TRN_QVD_PATH)Tender.qvd')) THEN
 Concatenate (tender)
 load [IDTenderOrig],
 	IDReleaseOCIDOrig,
-	[tender_currentStage],
+    tenderNumber,
+    tender_hasPrequalification,
+    tender_title,
+	[tender_statusDetails],
 	[tender_status],
 	[tender_datePublished],
     [tender_date_timePublished],
@@ -1017,7 +908,8 @@ load [IDTenderOrig],
 	[tender_procurementMethod],
 	[tender_procurementMethodDetails],
     [tender_procurementMethodRationale],
-	[tender_submissionMethod],
+    [tender_procurementSubMethodDetails],
+//	[tender_submissionMethod],
     [tender_enquiryPeriod_startDate],
     [tender_enquiryPeriod_startDateTime],
 	[tender_enquiryPeriod_endDate],
@@ -1049,7 +941,8 @@ load [IDTenderOrig],
 	[tender_COC_acceptancePaymentPercent],
 	[tender_COC_shipmentPaymentPercent],
 	[tender_COC_insuranceType],
-	[tender_COC_hasArbitralTribunal]
+	[tender_COC_hasArbitralTribunal],
+    tender_mainProcurementCategory
     ,tender_number_of_allowedTenderers
 FROM [$(TRN_QVD_PATH)Tender.qvd] (qvd)
 where not exists (IDReleaseOCID, IDReleaseOCIDOrig);
@@ -1060,7 +953,10 @@ NoConcatenate
 Load 
 	[IDTenderOrig],
 	IDReleaseOCIDOrig,
-	[tender_currentStage],
+    tenderNumber,
+    tender_hasPrequalification,
+    tender_title,
+	[tender_statusDetails],
 	[tender_status],
 	[tender_datePublished],
     [tender_date_timePublished],
@@ -1069,7 +965,8 @@ Load
 	[tender_procurementMethod],
 	[tender_procurementMethodDetails],
     tender_procurementMethodRationale,
-	[tender_submissionMethod],
+    tender_procurementSubMethodDetails,
+//	[tender_submissionMethod],
     [tender_enquiryPeriod_startDate],
     [tender_enquiryPeriod_startDateTime],
 	[tender_enquiryPeriod_endDate],
@@ -1101,7 +998,8 @@ Load
 	[tender_COC_acceptancePaymentPercent],
 	[tender_COC_shipmentPaymentPercent],
 	[tender_COC_insuranceType],
-	[tender_COC_hasArbitralTribunal]
+	[tender_COC_hasArbitralTribunal],
+    tender_mainProcurementCategory
     ,tender_number_of_allowedTenderers
     ,AutoNumber(IDReleaseOCIDOrig, 'IDReleaseOCID') As IDReleaseOCIDKey
     ,AutoNumber(IDTenderOrig, 'IDTender') as IDTender
@@ -1113,52 +1011,7 @@ drop table tender;
 Store Tender into [$(TRN_QVD_PATH)Tender.qvd] (qvd);
 Drop table Tender; 
 
-//==== Event Errors ====
-eventErrors:
-LOAD	[@Value_u1] AS tender_event_errors,
-	[__FK_eventErrors] AS [__KEY_root]
-RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__FK_eventErrors]);
-
-left join(eventErrors) 
-LOAD	[id_u10] AS [IDTenderOrig],
-		[__FK_tender] AS [__KEY_root]
-RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__FK_tender]);
-
-left join(eventErrors)
-LOAD	
-    [ocid] AS [IDReleaseOCIDOrig],
-    [ocid] AS [IDReleaseOCID],
-	[__KEY_root] AS [__KEY_root]
-RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__KEY_root]);
-
-IF NOT Isnull( FileSize('$(TRN_QVD_PATH)EventErrors.qvd')) THEN
-    Concatenate (eventErrors)
-    load 
-        tender_event_errors,
-        IDTenderOrig,
-        IDReleaseOCIDOrig
-    FROM [$(TRN_QVD_PATH)EventErrors.qvd] (qvd)
-    where not exists (IDReleaseOCID, IDReleaseOCIDOrig);
-ENDIF
-
-EventErrors:
-Load tender_event_errors,
-	IDTenderOrig,
-    IDReleaseOCIDOrig
-    ,AutoNumber(IDReleaseOCIDOrig, 'IDReleaseOCID') As IDReleaseOCIDKey
-    ,AutoNumber(IDTenderOrig, 'IDTender') as IDTenderKey
-Resident eventErrors;
-
-drop table eventErrors;
-
-Store EventErrors into [$(TRN_QVD_PATH)EventErrors.qvd] (qvd);
-Drop table EventErrors; 
-
 //====Tender Qualification Requirements====
-
 [qualificationRequirements]:
 LOAD	[id_u1] AS [qualificationRequirements_id],
 	[type] AS [qualificationRequirements_type],
@@ -1168,8 +1021,8 @@ WHERE NOT IsNull([__FK_qualificationRequirements]);
 
 left join(qualificationRequirements) 
 LOAD	[id_u10] AS [IDTenderOrig],
-	[__KEY_tender] AS [__KEY_tender],
-	[__FK_tender] AS [__KEY_root]
+	[__KEY_tender],
+	[__FK_tender] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_tender]);
 
@@ -1177,9 +1030,9 @@ left join(qualificationRequirements)
 LOAD	
     [ocid] AS [IDReleaseOCIDOrig],
     [ocid] AS [IDReleaseOCID],
-	[__KEY_root] AS [__KEY_root]
+	[__KEY_releases]
 RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__KEY_root]);
+WHERE NOT IsNull([__FK_releases]);
 
 if NOT Isnull( FileSize('$(TRN_QVD_PATH)QualificationRequirements.qvd')) THEN
 Concatenate (qualificationRequirements)
@@ -1222,7 +1075,7 @@ WHERE NOT IsNull([__FK_enquiries]);
 left join(enquiries) 
 LOAD	[id_u10] AS [IDTenderOrig],
 	[__KEY_tender] AS [__KEY_tender],
-	[__FK_tender] AS [__KEY_root]
+	[__FK_tender] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_tender]);
 
@@ -1230,9 +1083,9 @@ left join(enquiries)
 LOAD	
     [ocid] AS [IDReleaseOCIDOrig],
     [ocid] AS [IDReleaseOCID],
-	[__KEY_root] AS [__KEY_root]
+	[__KEY_releases]
 RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__KEY_root]);
+WHERE NOT IsNull([__FK_releases]);
 
 //[author]:
 left join(enquiries)
@@ -1279,20 +1132,35 @@ Drop table Enquiries;
 //====Tender documents====
 [documents]:
 LOAD	[id_u7] AS [tender_document_id],
-	[relatedItem] AS [tender_document_relatedItem],
-	[relatedLot_u0] AS [tender_document_relatedLot],
+// 	[relatedItem] AS [tender_document_relatedItem],
+// 	[relatedLot_u0] AS [tender_document_relatedLot],
     $(vDateConvert([datePublished_tender_document])) AS [tender_document_datePublished],
-    if(not IsNull([relatedItem]), 'item', 
-    	if(not IsNull([relatedLot_u0]), 'lot',
-        								 'tender')) AS [tender_document_documentOf],
+    [__KEY_documents],
+//     if(not IsNull([relatedItem]), 'item', 
+//     	if(not IsNull([relatedLot_u0]), 'lot',
+//         								 'tender')) AS [tender_document_documentOf],
 	[__FK_documents] AS [__KEY_tender]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_documents]);
 
+Left Join(documents) 
+LOAD	Concat([@Value_u4], '||') as [tender_document_relatedLot],
+	[__FK_relatedLots_u1] AS [__KEY_documents]
+RESIDENT RestConnectorMasterTable
+WHERE NOT IsNull([__FK_relatedLots_u1])
+Group By [__FK_relatedLots_u1];
+
+Left Join(documents) 
+LOAD	Concat([@Value_u3], '||') as [tender_document_relatedItem],
+	[__FK_relatedItems] AS [__KEY_documents]
+RESIDENT RestConnectorMasterTable
+WHERE NOT IsNull([__FK_relatedItems])
+Group By [__FK_relatedItems];
+
 left join(documents) 
 LOAD	[id_u10] AS [IDTenderOrig],
 	[__KEY_tender] AS [__KEY_tender],
-	[__FK_tender] AS [__KEY_root]
+	[__FK_tender] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_tender]);
 
@@ -1300,22 +1168,37 @@ left join(documents)
 LOAD	
     [ocid] AS [IDReleaseOCIDOrig],
     [ocid] AS [IDReleaseOCID],
-	[__KEY_root] AS [__KEY_root]
+	[__KEY_releases]
 RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__KEY_root]);
+WHERE NOT IsNull([__FK_releases]);
 
-if NOT Isnull( FileSize('$(TRN_QVD_PATH)TenderDocuments.qvd')) THEN
-Concatenate (documents)
-load [tender_document_id],
+TenderDocuments_:
+Load
+	[tender_document_id],
 	[tender_document_relatedItem],
     [tender_document_relatedLot],
 	[tender_document_datePublished],
-    tender_document_documentOf,
+    if(not IsNull([tender_document_relatedItem]), 'item', 
+    	if(not IsNull([tender_document_relatedLot]), 'lot',
+    		'tender')) AS [tender_document_documentOf],
     IDReleaseOCIDOrig,
     IDTenderOrig
-FROM [$(TRN_QVD_PATH)TenderDocuments.qvd] (qvd)
-where not exists (IDReleaseOCID, IDReleaseOCIDOrig);
-ENDIF;
+Resident documents;    
+
+Drop Table documents;
+
+IF NOT Isnull( FileSize('$(TRN_QVD_PATH)TenderDocuments.qvd')) THEN
+  Concatenate (TenderDocuments_)
+  Load [tender_document_id],
+      [tender_document_relatedItem],
+      [tender_document_relatedLot],
+      [tender_document_datePublished],
+      tender_document_documentOf,
+      IDReleaseOCIDOrig,
+      IDTenderOrig
+  FROM [$(TRN_QVD_PATH)TenderDocuments.qvd] (qvd)
+  Where NOT Exists (IDReleaseOCID, IDReleaseOCIDOrig);
+ENDIF
 
 TenderDocuments:
 NoConcatenate
@@ -1328,11 +1211,11 @@ Load [tender_document_id],
     IDTenderOrig
     ,AutoNumber(IDReleaseOCIDOrig, 'IDReleaseOCID') As IDReleaseOCIDKey
     ,AutoNumber(IDTenderOrig, 'IDTender') as IDTenderKey
-    ,AutoNumber(tender_document_relatedLot, 'IDLot') as IDLotKey
-    ,AutoNumber(tender_document_relatedItem, 'IDItem') as IDItemKey
-Resident documents;
+//     ,AutoNumber(tender_document_relatedLot, 'IDLot') as IDLotKey
+//     ,AutoNumber(tender_document_relatedItem, 'IDItem') as IDItemKey
+Resident TenderDocuments_;
 
-drop table documents;
+Drop Table TenderDocuments_;
 
 Store TenderDocuments into [$(TRN_QVD_PATH)TenderDocuments.qvd] (qvd);
 Drop table TenderDocuments; 
@@ -1342,15 +1225,15 @@ Drop table TenderDocuments;
 [complaints]:
 LOAD	[id_u17] AS [complaint_id],
 	[status_u2] AS [complaint_status],
-	$(vDateConvert([submissionDate])) AS [complaint_submissionDate],
+	$(vDateConvert([dateSubmitted])) AS [complaint_dateSubmitted],
 	[type_u0] AS [complaint_type],
-	[complaintID] AS [complaint_complaintID],
+	[complaintNumber] AS [complaint_complaintNumber],
 	[title_u0] AS [complaint_title],
 	[description_u0] AS [complaint_description],
 	$(vDateConvert([reviewDate])) AS [complaint_reviewDate],
 	$(vDateConvert([responseDate])) AS [complaint_responseDate],
 	[__KEY_complaints] AS [__KEY_complaints],
-	[__FK_complaints] AS [__KEY_root]
+	[__FK_complaints] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_complaints]);
 
@@ -1364,7 +1247,7 @@ WHERE NOT IsNull([__FK_author_u0]);
 left join(complaints) 
 LOAD	[id_u10] AS [IDTenderOrig],
 	[__KEY_tender] AS [__KEY_tender],
-	[__FK_tender] AS [__KEY_root]
+	[__FK_tender] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_tender]);
 
@@ -1372,17 +1255,17 @@ left join(complaints)
 LOAD	
     [ocid] AS [IDReleaseOCIDOrig],
     [ocid] AS [IDReleaseOCID],
-	[__KEY_root] AS [__KEY_root]
+	[__KEY_releases]
 RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__KEY_root]);
+WHERE NOT IsNull([__FK_releases]);
 
 if NOT Isnull( FileSize('$(TRN_QVD_PATH)Complaints.qvd')) THEN
 Concatenate (complaints)
 load [complaint_id],
 	[complaint_status],
-	[complaint_submissionDate],
+	[complaint_dateSubmitted],
 	[complaint_type],
-	[complaint_complaintID],
+	[complaint_complaintNumber],
 	[complaint_title],
 	[complaint_description],
 	[complaint_reviewDate],
@@ -1398,9 +1281,9 @@ Complaints:
 NoConcatenate
 Load [complaint_id],
 	[complaint_status],
-	[complaint_submissionDate],
+	[complaint_dateSubmitted],
 	[complaint_type],
-	[complaint_complaintID],
+	[complaint_complaintNumber],
 	[complaint_title],
 	[complaint_description],
 	[complaint_reviewDate],
@@ -1434,14 +1317,14 @@ WHERE NOT IsNull([__FK_documents_u0]);
 left join(documents_u0)
 LOAD [id_u17] AS [complaint_id],
 	[__KEY_complaints] AS [__KEY_complaints],
-	[__FK_complaints] AS [__KEY_root]
+	[__FK_complaints] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_complaints]);
 
 left join(documents_u0) 
 LOAD	[id_u10] AS [IDTenderOrig],
 	[__KEY_tender] AS [__KEY_tender],
-	[__FK_tender] AS [__KEY_root]
+	[__FK_tender] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_tender]);
 
@@ -1449,9 +1332,9 @@ left join(documents_u0)
 LOAD	
     [ocid] AS [IDReleaseOCIDOrig],
     [ocid] AS [IDReleaseOCID],
-	[__KEY_root] AS [__KEY_root]
+	[__KEY_releases]
 RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__KEY_root]);
+WHERE NOT IsNull([__FK_releases]);
 
 if NOT Isnull( FileSize('$(TRN_QVD_PATH)ComplaintDocuments.qvd')) THEN
 Concatenate (documents_u0)
@@ -1491,6 +1374,10 @@ Drop table ComplaintDocuments;
 [lots]:
 LOAD	[id_u2] AS [IDLotOrig],
 	[status] AS [lot_status],
+    [lotNumber],
+    [relatedPlanID],
+    [title_u2] AS [lot_title],
+    [deliveryTerms],
 	[__KEY_lots] AS [__KEY_lots],
 	[__FK_lots] AS [__KEY_tender]
 RESIDENT RestConnectorMasterTable
@@ -1507,7 +1394,7 @@ WHERE NOT IsNull([__FK_value_u0]);
 left join(lots) 
 LOAD	[id_u10] AS [IDTenderOrig],
 	[__KEY_tender] AS [__KEY_tender],
-	[__FK_tender] AS [__KEY_root]
+	[__FK_tender] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_tender]);
 
@@ -1515,13 +1402,17 @@ left join(lots)
 LOAD	
     [ocid] AS [IDReleaseOCIDOrig],
     [ocid] AS [IDReleaseOCID],
-	[__KEY_root] AS [__KEY_root]
+	[__KEY_releases]
 RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__KEY_root]);
+WHERE NOT IsNull([__FK_releases]);
 
 if NOT Isnull( FileSize('$(TRN_QVD_PATH)Lot.qvd')) THEN
 Concatenate (lots)
 load [IDLotOrig],
+	[lotNumber],
+    [relatedPlanID],
+    lot_title,
+    [deliveryTerms],
 	[lot_status],
     [lot_amount],
 	[lot_currency],
@@ -1535,6 +1426,10 @@ Lot:
 NoConcatenate
 Load [IDLotOrig],
 	[lot_status],
+    [lotNumber],
+    relatedPlanID,
+    lot_title,
+    deliveryTerms,
     [lot_amount],
 	[lot_currency],
 	[IDTenderOrig],
@@ -1547,6 +1442,7 @@ Resident lots;
 drop table lots;
 
 Store Lot into [$(TRN_QVD_PATH)Lot.qvd] (qvd);
+Store IDLotOrig, relatedPlanID as PlanId, lot_status, lot_amount From Lot into [$(PLAN_TRN_QVD_PATH)Lot.qvd] (qvd);
 Drop table Lot; 
 
 
@@ -1564,6 +1460,7 @@ WHERE NOT IsNull([__FK_items]);
 left join(items)
 LOAD	[scheme_u0] AS [items_classification_scheme],
 	[id_u3] AS [items_classification_id],
+    [description_u1] AS [items_classification_description],
 	[__FK_classification] AS [__KEY_items]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_classification]);
@@ -1571,7 +1468,7 @@ WHERE NOT IsNull([__FK_classification]);
 left join(items) 
 LOAD	[id_u10] AS [IDTenderOrig],
 	[__KEY_tender] AS [__KEY_tender],
-	[__FK_tender] AS [__KEY_root]
+	[__FK_tender] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_tender]);
 
@@ -1579,9 +1476,9 @@ left join(items)
 LOAD	
     [ocid] AS [IDReleaseOCIDOrig],
     [ocid] AS [IDReleaseOCID],
-	[__KEY_root] AS [__KEY_root]
+	[__KEY_releases]
 RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__KEY_root]);
+WHERE NOT IsNull([__FK_releases]);
 
 [unit]:
 LOAD	[id_u4] AS [items_unit_id],
@@ -1616,6 +1513,7 @@ load [IDItemOrig],
 	[items_quantity],
     [items_classification_id],
     items_classification_scheme,
+    [items_classification_description],
 	[IDTenderOrig],
 	[IDReleaseOCIDOrig],
      items_unit_id,
@@ -1633,6 +1531,7 @@ Load  [IDItemOrig],
 	[items_quantity],
     [items_classification_id],
     items_classification_scheme,
+    [items_classification_description],
 	[IDTenderOrig],
 	[IDReleaseOCIDOrig],
      items_unit_id,
@@ -1655,9 +1554,10 @@ Drop table Items;
 [details]:
 LOAD	[id_u14] AS [IDBidOrig],
 	[status_u1] AS [bid_status],
-	$(vDateConvert([date_u1])) AS [bid_date],
-    $(vFloorDateConvert(dateDisclosed)) AS dateDisclosed,
-    $(vDateConvert(dateDisclosed)) AS dateTimeDisclosed,
+	$(vDateConvert([date_u1])) AS [bid_dateTime],
+    $(vFloorDateConvert([date_u1])) AS [bid_date],
+//     $(vFloorDateConvert(dateDisclosed)) AS dateDisclosed,
+//     $(vDateConvert(dateDisclosed)) AS dateTimeDisclosed,
 	[__KEY_details] AS [__KEY_details],
 	[__FK_details] AS [__KEY_bids]
 RESIDENT RestConnectorMasterTable
@@ -1666,7 +1566,7 @@ WHERE NOT IsNull([__FK_details]);
 //[bids]:
 left join(details)
 LOAD	[__KEY_bids] AS [__KEY_bids],
-	[__FK_bids] AS [__KEY_root]
+	[__FK_bids] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_bids]);
 
@@ -1681,14 +1581,14 @@ left join(details)
 LOAD	
     [ocid] AS [IDReleaseOCIDOrig],
     [ocid] AS [IDReleaseOCID],
-	[__KEY_root] AS [__KEY_root]
+	[__KEY_releases]
 RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__KEY_root]);
+WHERE NOT IsNull([__FK_releases]);
 
 left join(details) 
 LOAD	[id_u10] AS [IDTenderOrig],
 	[__KEY_tender] AS [__KEY_tender],
-	[__FK_tender] AS [__KEY_root]
+	[__FK_tender] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_tender]);
 
@@ -1697,8 +1597,9 @@ Concatenate (details)
 load [IDBidOrig],
 	[bid_status],
 	[bid_date],
-    dateDisclosed,
-    dateTimeDisclosed,
+    bid_dateTime,
+//    dateDisclosed,
+//    dateTimeDisclosed,
 	[IDtendererOrig],
 	[IDTenderOrig],
 	[IDReleaseOCIDOrig]
@@ -1711,8 +1612,9 @@ NoConcatenate
 Load  [IDBidOrig],
 	[bid_status],
 	[bid_date],
-    dateDisclosed,
-    dateTimeDisclosed,
+    bid_dateTime,
+//    dateDisclosed,
+//    dateTimeDisclosed,
 	[IDtendererOrig],
 	[IDTenderOrig],
 	[IDReleaseOCIDOrig]
@@ -1754,14 +1656,14 @@ WHERE NOT IsNull([__FK_details]);
 
 left join(relatedLots)
 LOAD	[__KEY_bids] AS [__KEY_bids],
-	[__FK_bids] AS [__KEY_root]
+	[__FK_bids] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_bids]);
 
 left join(relatedLots) 
 LOAD	[id_u10] AS [IDTenderOrig],
 	[__KEY_tender] AS [__KEY_tender],
-	[__FK_tender] AS [__KEY_root]
+	[__FK_tender] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_tender]);
 
@@ -1769,9 +1671,9 @@ left join(relatedLots)
 LOAD	
     [ocid] AS [IDReleaseOCIDOrig],
     [ocid] AS [IDReleaseOCID],
-	[__KEY_root] AS [__KEY_root]
+	[__KEY_releases]
 RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__KEY_root]);
+WHERE NOT IsNull([__FK_releases]);
 
 if NOT Isnull( FileSize('$(TRN_QVD_PATH)BidsRelatedLots.qvd')) THEN
 Concatenate (relatedLots)
@@ -1808,18 +1710,18 @@ Drop table BidsRelatedLots;
 
 
 //====Bids Price Proposals====
-[priceProposals]:
+BidsPriceProposal:
 LOAD	[id_u12] AS [IDPriceProposalOrig],
-	[relatedLot_u1] AS [priceProposals_relatedLot],
-	[relatedItem_u0] AS [priceProposals_relatedItem],
-	[__KEY_priceProposals] AS [__KEY_priceProposals],
-	[__FK_priceProposals] AS [__KEY_details]
+	[relatedLot_u1] AS [priceProposal_relatedLot],
+	[relatedItem_u0] AS [priceProposal_relatedItem],
+	[__KEY_priceProposal] AS [__KEY_priceProposal],
+	[__FK_priceProposal] AS [__KEY_details]
 RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__FK_priceProposals]);
+WHERE NOT IsNull([__FK_priceProposal]);
 
 [unit_u0]:
 LOAD	[__KEY_unit_u0] AS [__KEY_unit_u0],
-	[__FK_unit_u0] AS [__KEY_priceProposals]
+	[__FK_unit_u0] AS [__KEY_priceProposal]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_unit_u0]);
 
@@ -1831,65 +1733,65 @@ LOAD	[amount_u3] AS [priceProposal_amount],
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_value_u3]);
 
-left join(priceProposals)
-Load [__KEY_priceProposals], 
+left join(BidsPriceProposal)
+Load [__KEY_priceProposal], 
 	if(len(priceProposal_amount)>14 AND IsNull(Frac(priceProposal_amount)), NUM(left(priceProposal_amount, 14)) * Pow(10, len(priceProposal_amount)-14) + NUM(right(priceProposal_amount, len(priceProposal_amount)-14)), priceProposal_amount) as priceProposal_amount,
-    priceProposal_amount as priceProposal_amountOrig, // ^^^Processing a situation with the number of digits of a number greater than 14^^^
+    priceProposal_amount as priceProposal_amountOrig, 
 	[priceProposal_currency]
 Resident unit_u0;
 
 drop table unit_u0;
 
-Left join(priceProposals)
+Left join(BidsPriceProposal)
 LOAD	[id_u14] AS [IDBidOrig],
 	[__KEY_details] AS [__KEY_details],
 	[__FK_details] AS [__KEY_bids]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_details]);
 
-left join(priceProposals)
+left join(BidsPriceProposal)
 LOAD	[__KEY_bids] AS [__KEY_bids],
-	[__FK_bids] AS [__KEY_root]
+	[__FK_bids] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_bids]);
 
-left join(priceProposals) 
+left join(BidsPriceProposal) 
 LOAD	[id_u10] AS [IDTenderOrig],
 	[__KEY_tender] AS [__KEY_tender],
-	[__FK_tender] AS [__KEY_root]
+	[__FK_tender] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_tender]);
 
-left join(priceProposals)
+left join(BidsPriceProposal)
 LOAD	
     [ocid] AS [IDReleaseOCIDOrig],
     [ocid] AS [IDReleaseOCID],
-	[__KEY_root] AS [__KEY_root]
+	[__KEY_releases]
 RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__KEY_root]);
+WHERE NOT IsNull([__FK_releases]);
 
-if NOT Isnull( FileSize('$(TRN_QVD_PATH)PriceProposals.qvd')) THEN
-Concatenate (priceProposals)
-load 
-	[IDPriceProposalOrig],
-	[priceProposals_relatedItem],
-	[priceProposals_relatedLot],
-    [priceProposal_amount],
-    priceProposal_amountOrig,
-	[priceProposal_currency],
-    [IDBidOrig],
-	[IDTenderOrig],
-	[IDReleaseOCIDOrig]
-FROM [$(TRN_QVD_PATH)PriceProposals.qvd] (qvd)
-where not exists (IDReleaseOCID, IDReleaseOCIDOrig);
-ENDIF;
+IF NOT Isnull( FileSize('$(TRN_QVD_PATH)priceProposal.qvd')) THEN
+  Concatenate (BidsPriceProposal)
+  load 
+      [IDPriceProposalOrig],
+      [priceProposal_relatedItem],
+      [priceProposal_relatedLot],
+      [priceProposal_amount],
+      priceProposal_amountOrig,
+      [priceProposal_currency],
+      [IDBidOrig],
+      [IDTenderOrig],
+      [IDReleaseOCIDOrig]
+  FROM [$(TRN_QVD_PATH)priceProposal.qvd] (qvd)
+  where not exists (IDReleaseOCID, IDReleaseOCIDOrig);
+ENDIF
 
-PriceProposals:
+priceProposal:
 NoConcatenate
 Load
 	[IDPriceProposalOrig],
-	[priceProposals_relatedItem],
-	[priceProposals_relatedLot],
+	[priceProposal_relatedItem],
+	[priceProposal_relatedLot],
     [priceProposal_amount],
     priceProposal_amountOrig,
 	[priceProposal_currency],
@@ -1899,29 +1801,38 @@ Load
     ,AutoNumber(IDReleaseOCIDOrig, 'IDReleaseOCID') as IDReleaseOCIDKey
     ,AutoNumber(IDTenderOrig, 'IDTender') as IDTenderKey    
     ,AutoNumber(IDBidOrig, 'IDBid') as IDBidKey
-    ,AutoNumber(priceProposals_relatedLot, 'IDLot') as IDLotKey
-    ,AutoNumber(priceProposals_relatedItem, 'IDItem') as IDItemKey
-    ,AutoNumber(IDBidOrig&'|'&priceProposals_relatedLot, 'IDLotBid') as IDLotBidKey
-Resident priceProposals;
+    ,AutoNumber(priceProposal_relatedLot, 'IDLot') as IDLotKey
+    ,AutoNumber(priceProposal_relatedItem, 'IDItem') as IDItemKey
+    ,AutoNumber(IDBidOrig&'|'&priceProposal_relatedLot, 'IDLotBid') as IDLotBidKey
+Resident BidsPriceProposal;
 
-drop table priceProposals;
+Drop Table BidsPriceProposal;
 
-Store PriceProposals into [$(TRN_QVD_PATH)PriceProposals.qvd] (qvd);
-Drop table PriceProposals; 
+Store priceProposal into [$(TRN_QVD_PATH)priceProposal.qvd] (qvd);
+Drop table priceProposal; 
 
 
 //====related Processes====
-[relatedProcesses]:
-LOAD	[relationship] AS [relatedProcess_relationship],
-	[identifier] AS [relatedProcess_identifier],
-	[__FK_relatedProcesses] AS [__KEY_root]
+relatedProcesses:
+LOAD	[identifier] as previousProcedure_id,
+	[tenderNumber_u0] as previousProcedure_number,
+	[id_u22] as relatedProcess_id,
+//	[scheme_u1],
+	[__KEY_relatedProcesses],
+	[__FK_relatedProcesses] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_relatedProcesses]);
+
+Left Join (relatedProcesses)
+LOAD	[@Value_u6] as relatedProcess_relationship,
+	[__FK_relationship] AS [__KEY_relatedProcesses]
+RESIDENT RestConnectorMasterTable
+WHERE NOT IsNull([__FK_relationship]);
 
 left join(relatedProcesses) 
 LOAD	[id_u10] AS [IDTenderOrig],
 	[__KEY_tender] AS [__KEY_tender],
-	[__FK_tender] AS [__KEY_root]
+	[__FK_tender] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_tender]);
 
@@ -1929,30 +1840,35 @@ left join(relatedProcesses)
 LOAD	
     [ocid] AS [IDReleaseOCIDOrig],
     [ocid] AS [IDReleaseOCID],
-	[__KEY_root] AS [__KEY_root]
+	[__KEY_releases]
 RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__KEY_root]);
+WHERE NOT IsNull([__FK_releases]);
 
-if NOT Isnull( FileSize('$(TRN_QVD_PATH)RelatedProcesses.qvd')) THEN
-Concatenate (relatedProcesses)
-load 
-	[relatedProcess_relationship],
-	[relatedProcess_identifier],
-	[IDTenderOrig],
-	[IDReleaseOCIDOrig]
-FROM [$(TRN_QVD_PATH)RelatedProcesses.qvd] (qvd)
-where not exists (IDReleaseOCID, IDReleaseOCIDOrig);
-ENDIF;
+IF NOT Isnull( FileSize('$(TRN_QVD_PATH)RelatedProcesses.qvd')) THEN
+  Concatenate (relatedProcesses)
+  load 
+      [relatedProcess_relationship],
+      [relatedProcess_id],
+      previousProcedure_id,
+      previousProcedure_number,
+      [IDTenderOrig],
+      [IDReleaseOCIDOrig]
+  FROM [$(TRN_QVD_PATH)RelatedProcesses.qvd] (qvd)
+  where not exists (IDReleaseOCID, IDReleaseOCIDOrig);
+ENDIF
 
 RelatedProcesses:
 NoConcatenate
 Load
-	[relatedProcess_relationship],
-	[relatedProcess_identifier],
-	[IDTenderOrig],
-	[IDReleaseOCIDOrig]
+      [relatedProcess_relationship],
+      [relatedProcess_id],
+      previousProcedure_id,
+      previousProcedure_number,
+      [IDTenderOrig],
+      [IDReleaseOCIDOrig]
     ,AutoNumber(IDReleaseOCIDOrig, 'IDReleaseOCID') as IDReleaseOCIDKey
-    ,AutoNumber(IDTenderOrig, 'IDTender') as IDTenderKey    
+    ,AutoNumber(IDTenderOrig, 'IDTender') as IDTenderKey 
+    ,AutoNumber(relatedProcess_id, 'IDTender') as relatedProcess_idKey
 Resident relatedProcesses;
 
 drop table relatedProcesses;
@@ -1967,9 +1883,9 @@ LOAD	[id_u18] AS [IDAwardOrig],
 	[status_u3] AS [award_status],
 //	[relatedLot_u2] AS [award_relatedLot],
 	[relatedBid] AS [award_relatedBid],
-	$(vDateConvert([datePublished_u1])) AS [award_date],
+	$(vDateConvert([date_u2])) AS [award_date],
 	[__KEY_awards] AS [__KEY_awards],
-	[__FK_awards] AS [__KEY_root]
+	[__FK_awards] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_awards]);
 
@@ -1991,7 +1907,7 @@ WHERE NOT IsNull([__FK_value_u4]);
 left join(awards) 
 LOAD	[id_u10] AS [IDTenderOrig],
 	[__KEY_tender] AS [__KEY_tender],
-	[__FK_tender] AS [__KEY_root]
+	[__FK_tender] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_tender]);
 
@@ -1999,9 +1915,9 @@ left join(awards)
 LOAD	
     [ocid] AS [IDReleaseOCIDOrig],
     [ocid] AS [IDReleaseOCID],
-	[__KEY_root] AS [__KEY_root]
+	[__KEY_releases]
 RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__KEY_root]);
+WHERE NOT IsNull([__FK_releases]);
 
 if NOT Isnull( FileSize('$(TRN_QVD_PATH)Awards.qvd')) THEN
 Concatenate (awards)
@@ -2046,7 +1962,6 @@ Drop table Awards;
 
 
 //====Contract Awards====
-
 [awardIDs]:
 LOAD Distinct	
 	[@Value_u0] AS [IDAwardOrig],
@@ -2060,14 +1975,14 @@ left join(awardIDs)
 LOAD Distinct	
 	[id_u20] AS [IDContractOrig],
 	[__KEY_contracts] AS [__KEY_contracts],
-	[__FK_contracts] AS [__KEY_root]
+	[__FK_contracts] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_contracts]);
 
 left join(awardIDs) 
 LOAD	[id_u10] AS [IDTenderOrig],
 	[__KEY_tender] AS [__KEY_tender],
-	[__FK_tender] AS [__KEY_root]
+	[__FK_tender] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_tender]);
 
@@ -2075,9 +1990,9 @@ left join(awardIDs)
 LOAD	
     [ocid] AS [IDReleaseOCIDOrig],
     [ocid] AS [IDReleaseOCID],
-	[__KEY_root] AS [__KEY_root]
+	[__KEY_releases]
 RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__KEY_root]);
+WHERE NOT IsNull([__FK_releases]);
 
 if NOT Isnull( FileSize('$(TRN_QVD_PATH)ContractAwards.qvd')) THEN
 Concatenate (awardIDs)
@@ -2112,12 +2027,13 @@ Drop table ContractAwards;
 //====Contracts====
 [contracts]:
 LOAD	[id_u20] AS [IDContractOrig],
-	[status_u4] AS [contract_status],
-	$(vDateConvert([date_u3])) AS [contract_date],
+	[contractNumber],
+//	[status_u4] AS [contract_status],
+//	$(vDateConvert([date_u3])) AS [contract_date],
 	$(vDateConvert([dateSigned])) AS [contract_dateSigned],
     $(vFloorDateConvert([dateSigned])) AS [contract_date_Signed],
 	[__KEY_contracts] AS [__KEY_contracts],
-	[__FK_contracts] AS [__KEY_root]
+	[__FK_contracts] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_contracts]);
 
@@ -2125,6 +2041,7 @@ WHERE NOT IsNull([__FK_contracts]);
 left join(contracts)
 LOAD	[amount_u5] AS [contract_amount],
 	[currency_u5] AS [contract_currency],
+    [amountDiscounted] as [contract_amountDiscounted],
 	[__FK_value_u5] AS [__KEY_contracts]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_value_u5]);
@@ -2132,7 +2049,7 @@ WHERE NOT IsNull([__FK_value_u5]);
 left join(contracts) 
 LOAD	[id_u10] AS [IDTenderOrig],
 	[__KEY_tender] AS [__KEY_tender],
-	[__FK_tender] AS [__KEY_root]
+	[__FK_tender] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_tender]);
 
@@ -2140,22 +2057,135 @@ left join(contracts)
 LOAD	
     [ocid] AS [IDReleaseOCIDOrig],
     [ocid] AS [IDReleaseOCID],
-	[__KEY_root] AS [__KEY_root]
+	[__KEY_releases]
 RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__KEY_root]);
+WHERE NOT IsNull([__FK_releases]);
+
+//Suppliers in Contracts
+// for competitive procedures
+ContractSupplier:
+LOAD Distinct	
+	[@Value_u0] AS [IDAwardOrig],
+	[__FK_awardIDs] AS [__KEY_contracts]
+RESIDENT RestConnectorMasterTable
+WHERE NOT IsNull([__FK_awardIDs]);
+
+Left Join(ContractSupplier)
+LOAD Distinct	
+	[__KEY_contracts],
+	[__FK_contracts] AS [__KEY_releases]
+RESIDENT RestConnectorMasterTable
+WHERE NOT IsNull([__FK_contracts]);
+
+CompetitiveContracts:
+Right Keep (ContractSupplier)
+Load
+	 [__KEY_contracts],
+	 [__KEY_releases]
+Resident contracts
+Where NOT IDReleaseOCID Like '*contract-based*';  
+
+Drop Table CompetitiveContracts;
+
+Inner Join (ContractSupplier) // When contracts have orphaned aword ids
+LOAD Distinct	
+	[id_u18] AS [IDAwardOrig],
+	[relatedBid],
+	[__FK_awards] AS [__KEY_releases]
+RESIDENT RestConnectorMasterTable
+WHERE NOT IsNull([__FK_awards]) AND NOT IsNull([relatedBid]); // To prevent double contracts
+
+
+BidIds:
+LOAD	[id_u14] AS relatedBid,
+		[__KEY_details] AS [__KEY_details],
+		[__FK_details] AS [__KEY_bids]
+RESIDENT RestConnectorMasterTable
+WHERE NOT IsNull([__FK_details]);
+
+Left Join(BidIds)
+LOAD	[__KEY_bids],
+	[__FK_bids] AS [__KEY_releases]
+RESIDENT RestConnectorMasterTable
+WHERE NOT IsNull([__FK_bids]);
+
+Left Join(BidIds)
+LOAD	[id_u13] AS [IDsupplierOrig],
+	[__FK_tenderers] AS [__KEY_details]
+RESIDENT RestConnectorMasterTable
+WHERE NOT IsNull([__FK_tenderers]);
+
+Left Join (ContractSupplier)
+Load
+	 relatedBid,
+     IDsupplierOrig,
+     [__KEY_releases]
+Resident BidIds;
+Drop Table BidIds;
+
+// for noncompetitive procedures
+ContractSupplier2:
+Load
+	 [__KEY_contracts],
+	 [__KEY_releases]
+Resident contracts
+Where IDReleaseOCID Like '*contract-based*';   
+
+SupRols:
+LOAD Distinct
+	[__FK_roles] AS [__KEY_parties]
+RESIDENT RestConnectorMasterTable
+WHERE NOT IsNull([__FK_roles]) AND [@Value] = 'supplier';
+
+Left Join(SupRols)
+LOAD Distinct	
+	[id_u0] AS IDsupplierOrig,
+	[__KEY_parties],
+	[__FK_parties] AS [__KEY_releases]
+RESIDENT RestConnectorMasterTable
+WHERE NOT IsNull([__FK_parties]);
+
+Left Join (ContractSupplier2)
+Load
+	 [__KEY_releases],
+     IDsupplierOrig
+Resident  SupRols;
+Drop Table SupRols;
+
+Concatenate (ContractSupplier)
+Load Distinct
+	 IDsupplierOrig,
+     [__KEY_contracts],
+	 [__KEY_releases]
+Resident ContractSupplier2;
+Drop Table ContractSupplier2;
+
+Left Join (contracts)
+Load Distinct
+	 IDsupplierOrig,
+     [__KEY_contracts],
+	 [__KEY_releases]
+Resident  ContractSupplier
+Where NOT IsNull(IDsupplierOrig);  
+
+Drop Table ContractSupplier;
+/////////////////////////////
 
 if NOT Isnull( FileSize('$(TRN_QVD_PATH)Contracts.qvd')) THEN
 Concatenate (contracts)
 load 
 	[IDContractOrig],
-	[contract_status],
-	[contract_date],
+    [contractNumber],
+//	[contract_status],
+//	[contract_date],
 	[contract_dateSigned],
     [contract_date_Signed],
     [contract_amount],
+    [contract_amountDiscounted],
 	[contract_currency],
 	[IDTenderOrig],
-	[IDReleaseOCIDOrig]
+	[IDReleaseOCIDOrig],
+    IDsupplierOrig
 FROM [$(TRN_QVD_PATH)Contracts.qvd] (qvd)
 where not exists (IDReleaseOCID, IDReleaseOCIDOrig);
 ENDIF;
@@ -2164,17 +2194,21 @@ Contracts:
 NoConcatenate
 Load
 	[IDContractOrig],
-	[contract_status],
-	[contract_date],
+    [contractNumber],
+//	[contract_status],
+//	[contract_date],
 	[contract_dateSigned],
     [contract_date_Signed],
     [contract_amount],
+    [contract_amountDiscounted],
 	[contract_currency],
 	[IDTenderOrig],
-	[IDReleaseOCIDOrig]
+	[IDReleaseOCIDOrig],
+    IDsupplierOrig
     ,AutoNumber(IDReleaseOCIDOrig, 'IDReleaseOCID') as IDReleaseOCIDKey
     ,AutoNumber(IDTenderOrig, 'IDTender') as IDTenderKey   
     ,AutoNumber(IDContractOrig, 'IDContract') as IDContract
+    ,AutoNumber(IDsupplierOrig, 'IDsupplier') as IDsupplierKey
 Resident contracts;
 
 drop table contracts;
@@ -2183,79 +2217,13 @@ Store Contracts into [$(TRN_QVD_PATH)Contracts.qvd] (qvd);
 Drop table Contracts; 
 
 
-//====Contract Items====
-[items_u0]:
-LOAD	[id_u19] AS [contract_items_id],
-	[relatedLot_u3] AS [contract_items_relatedLot],
-	[__FK_items_u0] AS [__KEY_contracts]
-RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__FK_items_u0]);
-
-//[contracts]:
-left join(items_u0)
-LOAD	[id_u20] AS [IDContractOrig],
-	[__KEY_contracts] AS [__KEY_contracts],
-	[__FK_contracts] AS [__KEY_root]
-RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__FK_contracts]);
-
-left join(items_u0) 
-LOAD	[id_u10] AS [IDTenderOrig],
-	[__KEY_tender] AS [__KEY_tender],
-	[__FK_tender] AS [__KEY_root]
-RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__FK_tender]);
-
-left join(items_u0)
-LOAD	
-    [ocid] AS [IDReleaseOCIDOrig],
-    [ocid] AS [IDReleaseOCID],
-	[__KEY_root] AS [__KEY_root]
-RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__KEY_root]);
-
-if NOT Isnull( FileSize('$(TRN_QVD_PATH)ContractItems.qvd')) THEN
-Concatenate (items_u0)
-load 
-	[contract_items_id],
-	[contract_items_relatedLot],
-    [IDContractOrig],
-	[IDTenderOrig],
-	[IDReleaseOCIDOrig]
-FROM [$(TRN_QVD_PATH)ContractItems.qvd] (qvd)
-where not exists (IDReleaseOCID, IDReleaseOCIDOrig);
-ENDIF;
-
-ContractItems:
-NoConcatenate
-Load
-	[contract_items_id],
-	[contract_items_relatedLot],
-    [IDContractOrig],
-	[IDTenderOrig],
-	[IDReleaseOCIDOrig]
-    ,AutoNumber(IDReleaseOCIDOrig, 'IDReleaseOCID') as IDReleaseOCIDKey
-    ,AutoNumber(IDTenderOrig, 'IDTender') as IDTenderKey   
-    ,AutoNumber(IDContractOrig, 'IDContract') as IDContractKey
-    ,AutoNumber(contract_items_relatedLot, 'IDLot') as IDLotKey
-    ,AutoNumber(contract_items_id, 'IDItem') as IDItemKey
-Resident items_u0;
-
-drop table items_u0;
-
-Store ContractItems into [$(TRN_QVD_PATH)ContractItems.qvd] (qvd);
-Drop table ContractItems; 
-
-
-
-
 // //========2. Dictionaries========
 
 [parties]:
 LOAD Distinct	
 	[id_u0] AS [IDParty],
 	[__KEY_parties] AS [__KEY_parties],
-	[__FK_parties] AS [__KEY_root]
+	[__FK_parties] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_parties]);
 
@@ -2265,7 +2233,7 @@ LOAD Distinct
 	[scheme] AS [parties_scheme],
 	[id] AS [parties_id],
 	[legalName] AS [parties_legalName],
-	[legalName_ru] AS [parties_legalName_ru],
+//	[legalName_ru] AS [parties_legalName_ru],
 	[legalName_kg] AS [parties_legalName_kg],
 	[__FK_identifier] AS [__KEY_parties]
 RESIDENT RestConnectorMasterTable
@@ -2303,48 +2271,42 @@ WHERE NOT IsNull([__FK_roles]);
 left join(parties)
 LOAD Distinct
 	$(vDateConvert([date_u4])) AS [parties_latestRelease_date],
-	[__KEY_root] AS [__KEY_root]
+	[__KEY_releases]
 RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__KEY_root]);
+WHERE NOT IsNull([__FK_releases]);
 
-[contactPoints]:
-LOAD Distinct	
-	[name] AS [parties_CP_name],
-	[email] AS [parties_CP_email],
-	[telephone] AS [parties_CP_telephone],
-	[role] AS [parties_CP_role],
-	[__FK_contactPoints] AS [__KEY_parties]
-RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__FK_contactPoints]);
+// [additionalContactPoints]:
+// LOAD Distinct	
+// 	[name] AS [parties_CP_name],
+// 	[email] AS [parties_CP_email],
+// 	[telephone] AS [parties_CP_telephone],
+// 	[role] AS [parties_CP_role],
+// 	[__FK_additionalContactPoints] AS [__KEY_parties]
+// RESIDENT RestConnectorMasterTable
+// WHERE NOT IsNull([__FK_additionalContactPoints]);
 
-//[parties]:
-left join(contactPoints)
-LOAD Distinct	
-	[id_u0] AS [IDParty],
-	[__KEY_parties] AS [__KEY_parties],
-	[__FK_parties] AS [__KEY_root]
-RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__FK_parties]);
+// //[parties]:
+// left join(additionalContactPoints)
+// LOAD Distinct	
+// 	[id_u0] AS [IDParty],
+// 	[__KEY_parties] AS [__KEY_parties],
+// 	[__FK_parties] AS [__KEY_releases]
+// RESIDENT RestConnectorMasterTable
+// WHERE NOT IsNull([__FK_parties]);
 
-left join(contactPoints)
-LOAD Distinct	
-	[@Value] AS [parties_role],
-	[__FK_roles] AS [__KEY_parties]
-RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__FK_roles]);
+// left join(additionalContactPoints)
+// LOAD Distinct	
+// 	[@Value] AS [parties_role],
+// 	[__FK_roles] AS [__KEY_parties]
+// RESIDENT RestConnectorMasterTable
+// WHERE NOT IsNull([__FK_roles]);
 
-// left join(contactPoints)
-// Load distinct
-// 	 [__KEY_parties],
-// 	 [IDParty]&'|'&[parties_role] as parties_complexKeyForCP
-// Resident contactPoints;
-
-left join(contactPoints)
-LOAD Distinct
-	$(vDateConvert([date_u4])) AS [contactPoint_latestRelease_date],
-	[__KEY_root] AS [__KEY_root]
-RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__KEY_root]);
+// left join(additionalContactPoints)
+// LOAD Distinct
+// 	$(vDateConvert([date_u4])) AS [contactPoint_latestRelease_date],
+// 	[__KEY_releases]
+// RESIDENT RestConnectorMasterTable
+// WHERE NOT IsNull([__FK_releases]);
 
 for each vParty in 'buyer', 'complainer', 'enquirer', 'procuringEntity', 'reviewBody', 'supplier', 'tenderer'//FieldValueList('parties_role')
 
@@ -2354,9 +2316,9 @@ for each vParty in 'buyer', 'complainer', 'enquirer', 'procuringEntity', 'review
 
 next vParty;
 
-drop tables parties, contactPoints;
+drop tables parties; //, additionalContactPoints;
 
-//Additional table listing allowerdTenderer for each procedure
+
 [tender_allowedTenderers]:
 LOAD	//[@Value] AS [@Value],
 	[__FK_roles] AS [__KEY_parties]
@@ -2369,15 +2331,15 @@ left join(tender_allowedTenderers)
 //[parties]:
 LOAD	[id_u0] AS [IDallowedTendererOrig],
 	[__KEY_parties] AS [__KEY_parties],
-	[__FK_parties] AS [__KEY_root]
+	[__FK_parties] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_parties]);
 
 left join(tender_allowedTenderers)
 LOAD	[id_u10] AS [IDTenderOrig],
-	[procurementMethodDetails] AS [tender_procurementMethodDetails],
+//	[procurementMethodDetails] AS [tender_procurementMethodDetails],
 	[__KEY_tender] AS [__KEY_tender],
-	[__FK_tender] AS [__KEY_root]
+	[__FK_tender] AS [__KEY_releases]
 RESIDENT RestConnectorMasterTable
 WHERE NOT IsNull([__FK_tender]);
 
@@ -2385,9 +2347,9 @@ left join(tender_allowedTenderers)
 LOAD	
     [ocid] AS [IDReleaseOCIDOrig],
     [ocid] AS [IDReleaseOCID],
-	[__KEY_root] AS [__KEY_root]
+	[__KEY_releases]
 RESIDENT RestConnectorMasterTable
-WHERE NOT IsNull([__KEY_root]);
+WHERE NOT IsNull([__FK_releases]);
 
 if NOT Isnull( FileSize('$(TRN_QVD_PATH)Tender_allowedTenderers.qvd')) THEN
 Concatenate (tender_allowedTenderers)
@@ -2400,7 +2362,6 @@ where not exists (IDReleaseOCID, IDReleaseOCIDOrig);
 ENDIF;
 
 Tender_allowedTenderers:
-NoConcatenate
 Load
 	IDallowedTendererOrig,
 	[IDTenderOrig],
@@ -2415,25 +2376,33 @@ drop table tender_allowedTenderers;
 Store Tender_allowedTenderers into [$(TRN_QVD_PATH)Tender_allowedTenderers.qvd] (qvd);
 Drop table Tender_allowedTenderers; 
 
-
-DROP TABLE RestConnectorMasterTable;
-
-// If updating data without errors - save a new Offset,
-// otherwise, at the next reboot, update data from the old Offset
+//6. Offset Clean
 
 OffsetTable:
-NoConcatenate
-LOAD 
-	 LastValue(OffsetDateTime) as OffsetDateTime
-Resident TenderHeaders;	 
+LOAD	
+	LastValue([publishedDate]) as OffsetDateTime
+RESIDENT RestConnectorMasterTable
+WHERE NOT IsNull([__KEY_root])
+Order By [publishedDate];
+
+LET vCurrentReloadSessionOffset = Peek('OffsetDateTime', -1, 'OffsetTable');
 
 STORE OffsetTable INTO  [$(DIC_QVD_PATH)OffsetTable.txt] (txt); 
 DROP Table OffsetTable;
 
-DROP Table TenderHeaders;
+LET vURL = vBaseURL&vOffsetNo&vPageSize&vSince&vCurrentReloadSessionOffset;
+
+	ELSE
+    	TRACE No New Releases!!!;
+
+ENDIF
+
+DROP TABLE RestConnectorMasterTable;
 
 //
-NEXT vBatchNo;
+LOOP while vNoOfRCMTReleases > 0
 //
 
-DROP Table BatchTable;
+
+
+
